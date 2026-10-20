@@ -1,23 +1,6 @@
 import logging
 
-import pytest
-from moto import mock_aws
-
 from tripwire.common import regions
-
-
-@pytest.fixture
-def aws(monkeypatch):
-    for k, v in {
-        "AWS_ACCESS_KEY_ID": "testing",
-        "AWS_SECRET_ACCESS_KEY": "testing",
-        "AWS_DEFAULT_REGION": "us-east-1",
-    }.items():
-        monkeypatch.setenv(k, v)
-    regions.get_client.cache_clear()
-    with mock_aws():
-        yield
-    regions.get_client.cache_clear()
 
 
 def test_get_client_is_cached(aws):

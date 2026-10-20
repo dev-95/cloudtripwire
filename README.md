@@ -4,4 +4,13 @@ Install in 2 minutes, stop surprise AWS bills: zombie cleanup, self-destruct tim
 
 > Work in progress. Not ready to install yet.
 
+## What it detects
+
+| Detector | Flags | Estimated cost |
+|---|---|---|
+| `ebs_unattached` | EBS volumes not attached to any instance | size × per-GB-month price |
+| `eip_unassociated` | Elastic IPs not attached to anything | ~$3.65/month each |
+
+Details, cost formulas and suggested fixes: [docs/detectors.md](docs/detectors.md).
+
 License: MIT
