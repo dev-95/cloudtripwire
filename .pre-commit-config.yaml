@@ -1,0 +1,15 @@
+repos:
+  # Local hook using gitleaks on PATH (winget install Gitleaks.Gitleaks): Smart App Control
+  # blocks the binary pre-commit builds, and upstream gitleaks-system passes filenames it rejects.
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (staged changes)
+        entry: gitleaks git --pre-commit --staged --redact --no-banner
+        language: system
+        pass_filenames: false
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.1
+    hooks:
+      - id: ruff-check
+      - id: ruff-format

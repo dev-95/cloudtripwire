@@ -1,0 +1,1 @@
+"""TTL Lambda entry point."""

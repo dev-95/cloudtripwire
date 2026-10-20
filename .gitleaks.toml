@@ -1,0 +1,8 @@
+title = "cloudtripwire"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Obvious fake keys used in tests"
+regexes = ['''AKIAEXAMPLE0000TEST''']

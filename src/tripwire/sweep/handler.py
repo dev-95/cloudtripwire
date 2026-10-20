@@ -1,0 +1,1 @@
+"""Sweep Lambda entry point."""

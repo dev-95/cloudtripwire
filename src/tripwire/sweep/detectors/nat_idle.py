@@ -1,0 +1,1 @@
+"""Detector: idle NAT gateways."""
