@@ -435,7 +435,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 - **Current milestone:** M1 in progress (scaffold done)
 - **Last session:** 2026-10-19, detector interface (`RegionClients`, `DETECTORS`) + `ebs_unattached` and `eip_unassociated` with moto tests; started `docs/detectors.md` and README detector table
-- **Next step:** detectors `nat_idle`, `elb_no_targets`, `snapshots_old`, `ec2_stopped_long` with tests
+- **Next step:** first, move `RegionClients` into `common/clients.py` and remove the `noqa` import workaround in `detectors/__init__.py`; then Step 5: detectors `nat_idle`, `elb_no_targets`, `snapshots_old`, `ec2_stopped_long` with tests
 - **Done in M1:** scaffold; models + tags; config, regions, pricing; EBS + EIP detectors
 - **Notes:**
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
