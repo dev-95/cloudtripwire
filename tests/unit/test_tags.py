@@ -104,8 +104,6 @@ def test_naive_datetimes_rejected():
     with pytest.raises(ValueError):
         parse_ttl("4h", naive)
     with pytest.raises(ValueError):
-        parse_ttl("4h", CREATED, now=naive)
-    with pytest.raises(ValueError):
         is_expired(naive, CREATED)
     with pytest.raises(ValueError):
         needs_warning(CREATED, naive)

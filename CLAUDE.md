@@ -434,15 +434,19 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 ## 15. Status
 
 - **Current milestone:** M1 in progress (scaffold done)
-- **Last session:** 2026-10-19, scaffold + `common/models.py` (Finding, Action) and `common/tags.py` (tag dict, ignore, ttl parse/expiry/warning) with tests
-- **Next step:** `common/config.py`, `regions.py`, `pricing.py` with tests
-- **Done in M1:** scaffold; models + tags
+- **Last session:** 2026-10-19, `common/config.py`, `regions.py`, `pricing.py` with tests; dropped unused `now` from `parse_ttl`
+- **Next step:** detectors `ebs_unattached` + `eip_unassociated` with moto tests
+- **Done in M1:** scaffold; models + tags; config, regions, pricing
 - **Notes:**
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
   - `pre-commit` added to `requirements-dev.txt` (needed for hooks).
   - Ruff excludes `*.md` so spec code samples aren't reformatted.
   - gitleaks pre-commit hook is a local hook using gitleaks on PATH (`winget install Gitleaks.Gitleaks`); Smart App Control blocks the binary pre-commit builds.
-  - `Finding.to_dict()` returns a float cost; `state.py` must convert floats to `Decimal` for DynamoDB.
+  - `Finding.to_dict()` returns a float cost; `state.py` must convert floats to `Decimal` for DynamoDB (boto3 rejects floats).
+  - Prices in `pricing.py` verified 2026-10-19 against the AWS public Price List files (us-east-1); the pricing pages only show examples. Re-verify before release.
+  - `Config` includes `sweep_schedule`, `ttl_schedule`, `tags` for completeness; only Terraform actually uses them.
+  - Not yet in `Config`: DynamoDB table name, SNS topic ARN env vars; add when `state.py` / `notify.py` need them.
+  - `get_client` cache lives for the warm Lambda container (not one invocation); tests call `get_client.cache_clear()`.
   - `.github/workflows/` is empty (`.gitkeep`); `ci.yml` comes with the CI milestone item.
 - **Open decisions:**
   - Kill switch default mode: `enforce` vs `observe` (section 6.3)

@@ -34,16 +34,13 @@ def _require_aware(*dts: datetime | None) -> None:
             raise ValueError("datetime must be timezone-aware")
 
 
-def parse_ttl(
-    value: str | None, created_at: datetime, now: datetime | None = None
-) -> datetime | None:
+def parse_ttl(value: str | None, created_at: datetime) -> datetime | None:
     """Return the UTC expiry for a ttl tag value, or None if it is unreadable.
 
     Relative values (30m, 4h, 2d, 1w) count from created_at. Absolute values are
     UTC: 2026-10-20 (midnight) or 2026-10-20T18:00Z.
     """
-    # ponytail: `now` only validated; expiry doesn't depend on it. Kept for the agreed signature.
-    _require_aware(created_at, now)
+    _require_aware(created_at)
     v = (value or "").strip().lower()
     try:
         if m := _RELATIVE.fullmatch(v):
