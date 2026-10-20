@@ -434,12 +434,15 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 ## 15. Status
 
 - **Current milestone:** M1 in progress (scaffold done)
-- **Last session:** 2026-10-19, repo scaffolded: layout, LICENSE, pyproject, pre-commit (gitleaks + ruff), .venv (py3.12), smoke test
-- **Next step:** write `common/tags.py` + `common/models.py` with tests
+- **Last session:** 2026-10-19, scaffold + `common/models.py` (Finding, Action) and `common/tags.py` (tag dict, ignore, ttl parse/expiry/warning) with tests
+- **Next step:** `common/config.py`, `regions.py`, `pricing.py` with tests
+- **Done in M1:** scaffold; models + tags
 - **Notes:**
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
   - `pre-commit` added to `requirements-dev.txt` (needed for hooks).
   - Ruff excludes `*.md` so spec code samples aren't reformatted.
+  - gitleaks pre-commit hook is a local hook using gitleaks on PATH (`winget install Gitleaks.Gitleaks`); Smart App Control blocks the binary pre-commit builds.
+  - `Finding.to_dict()` returns a float cost; `state.py` must convert floats to `Decimal` for DynamoDB.
   - `.github/workflows/` is empty (`.gitkeep`); `ci.yml` comes with the CI milestone item.
 - **Open decisions:**
   - Kill switch default mode: `enforce` vs `observe` (section 6.3)
