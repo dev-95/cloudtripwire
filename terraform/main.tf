@@ -14,3 +14,12 @@ locals {
   ssm_prefix = "/cloudtripwire"
   telegram   = contains(var.channels, "telegram")
 }
+
+# Warning only (check blocks never fail plan/apply): the sweep-errors alarm goes to the
+# SNS topic, which only delivers email, so Telegram-only users won't hear about a crash.
+check "crash_alerts_reachable" {
+  assert {
+    condition     = var.alert_email != ""
+    error_message = "Crash alerts are delivered by email only; set alert_email."
+  }
+}

@@ -435,8 +435,8 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 ## 15. Status
 
 - **Current milestone:** M1 in progress (scaffold done)
-- **Last session:** 2026-10-23, Terraform module for the sweep path (fmt + validate pass in `terraform/` and `examples/basic`; no plan/apply run) + `docs/permissions.md`
-- **Next step:** CI workflow (`ci.yml`: ruff, pytest, terraform fmt/validate, gitleaks, IAM destructive-action grep). Then, with Devesh's approval, the first `terraform plan` / `apply` in the `tripwire-test` account for the M1 demo.
+- **Last session:** 2026-10-23, Terraform `check` warning for empty `alert_email`; `.github/workflows/ci.yml` (test → terraform; secrets; iam-guard) + `scripts/check_iam.py` with tests; README CI badge
+- **Next step:** Devesh adds the GitHub remote and pushes so CI runs for the first time (then tick "CI workflow green"). After that, with approval, the first `terraform plan` / `apply` in the `tripwire-test` account for the M1 demo.
 - **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep)
 - **Notes:**
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
@@ -445,7 +445,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - gitleaks pre-commit hook is a local hook using gitleaks on PATH (`winget install Gitleaks.Gitleaks`); Smart App Control blocks the binary pre-commit builds.
   - State table layout is in `docs/architecture.md`. Terraform must set the table's TTL attribute to `expires_at`. `resolve_missing` takes the (region, detector) pairs that succeeded; a failed pair never resolves its findings, other detectors in that region still do.
   - Sweep handler: regions run sequentially; `duration_s` is in the logged `sweep_summary`. Messages: findings → digest; failures → always sent with "Warning: N checks failed" (⚠️ header if nothing found); otherwise all-clear only on Mondays UTC. Each finding is logged with its `fix_command` (the digest footer points there).
-  - Pre-flight failures (config, `describe_regions`, DynamoDB) make the Lambda error. Covered by the `cloudtripwire-sweep-errors` alarm (Errors ≥ 1/day → SNS). **That alarm only reaches email**, not Telegram: a Telegram-only user won't hear about a crashed sweep. Options: subscribe a small forwarder, or ask for `alert_email` too.
+  - Pre-flight failures (config, `describe_regions`, DynamoDB) make the Lambda error. Covered by the `cloudtripwire-sweep-errors` alarm (Errors ≥ 1/day → SNS). **That alarm only reaches email**, not Telegram: a Telegram-only user won't hear about a crashed sweep. Terraform now warns (a `check` block, never fails) when `alert_email` is empty. A Telegram forwarder for the alarm is a possible later fix.
   - Terraform: AWS provider `~> 6.0` (6.70.0 latest on 2026-10-23), archive `~> 2.8`. `data.aws_region.current.region` (v6 name). Module zips `../src` with `archive_file` (so it must be sourced from the full repo, e.g. `github.com/dev-95/cloudtripwire//terraform`); `**` excludes verified against archive v2.8.1 docs, but the zip itself has not been built (needs plan).
   - Terraform creates the Telegram SSM params with `REPLACE_ME` + `ignore_changes = [value]`; the user sets real values with the `ssm_setup_commands` output. Only created when `telegram` is in `channels`.
   - No PITR on the state table (costs money; data is rebuildable). `.terraform.lock.hcl` and `.build/` are gitignored (module consumers own their lock file).
@@ -466,7 +466,10 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - `describe_addresses` has no paginator (single call returns all).
   - Fix commands chained with `&&` don't run in Windows PowerShell 5.1; noted in `docs/detectors.md`.
   - `get_client` cache lives for the warm Lambda container (not one invocation); tests call `get_client.cache_clear()`.
-  - `.github/workflows/` is empty (`.gitkeep`); `ci.yml` comes with the CI milestone item.
+  - CI (`ci.yml`) has **never run**: the repo has no git remote yet, so the README badge shows nothing until the first push. Pins (checked 2026-10-23): checkout v7.0.1, setup-python v7.0.0 (skipped v7.1.0, released the day before), setup-terraform v4.0.1, gitleaks 8.30.1 binary with SHA-256 verified in the job. Terraform job tests 1.5.x (the floor in `versions.tf`) and latest 1.x.
+  - `scripts/check_iam.py` is stricter than section 10's grep: it rejects any `*` in an action (e.g. `ec2:Describe*` too), Delete/Terminate/Release (case-insensitive), and fails if a file has no actions (parser miss). Reads HCL `actions`/`not_actions` and JSON/jsonencode `Action`/`NotAction`. Add `cloudformation/cloudtripwire.yaml` to its args when that exists.
+  - Local gitleaks on full history (`gitleaks git --redact .`): no leaks, 15 commits.
+  - Suite timing is noisy on this laptop: 8.5–13s for 159 tests across runs (same code). The 14 IAM tests take 0.06s. If CI shows it consistently over 10s, the first `ec2` call (~2s warm-up in `test_ebs_finds_unattached_volume`) is the biggest single cost.
 - **Open decisions:**
   - Kill switch default mode: `enforce` vs `observe` (section 6.3)
   - CloudFormation one-click at launch vs Terraform-only first (section 10)
