@@ -11,11 +11,18 @@ from datetime import datetime
 from tripwire.common.clients import RegionClients
 from tripwire.common.config import Config
 from tripwire.common.models import Finding
-from tripwire.sweep.detectors import ebs_unattached, eip_unassociated
+from tripwire.sweep.detectors import (
+    ebs_unattached,
+    ec2_stopped_long,
+    eip_unassociated,
+    snapshots_old,
+)
 
 Detect = Callable[[RegionClients, str, Config, datetime], list[Finding]]
 
 DETECTORS: list[tuple[str, Detect]] = [
     ("ebs_unattached", ebs_unattached.detect),
     ("eip_unassociated", eip_unassociated.detect),
+    ("snapshots_old", snapshots_old.detect),
+    ("ec2_stopped_long", ec2_stopped_long.detect),
 ]

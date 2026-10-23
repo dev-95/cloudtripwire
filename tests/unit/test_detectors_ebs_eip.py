@@ -33,7 +33,12 @@ def launch_instance(ec2) -> str:
 
 
 def test_registry_order():
-    assert [name for name, _ in DETECTORS] == ["ebs_unattached", "eip_unassociated"]
+    assert [name for name, _ in DETECTORS] == [
+        "ebs_unattached",
+        "eip_unassociated",
+        "snapshots_old",
+        "ec2_stopped_long",
+    ]
 
 
 # --- ebs_unattached ---

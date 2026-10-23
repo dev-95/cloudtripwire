@@ -434,9 +434,9 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 ## 15. Status
 
 - **Current milestone:** M1 in progress (scaffold done)
-- **Last session:** 2026-10-19, detector interface (`RegionClients`, `DETECTORS`) + `ebs_unattached` and `eip_unassociated` with moto tests; started `docs/detectors.md` and README detector table
-- **Next step:** first, move `RegionClients` into `common/clients.py` and remove the `noqa` import workaround in `detectors/__init__.py`; then Step 5: detectors `nat_idle`, `elb_no_targets`, `snapshots_old`, `ec2_stopped_long` with tests
-- **Done in M1:** scaffold; models + tags; config, regions, pricing; EBS + EIP detectors
+- **Last session:** 2026-10-23, moved `RegionClients` to `common/clients.py`; added `snapshots_old` and `ec2_stopped_long` with moto tests, docs, README rows
+- **Next step:** decide how to get the suite back under 10s (now ~14s, see notes); then detectors `nat_idle`, `elb_no_targets` with tests
+- **Done in M1:** scaffold; models + tags; config, regions, pricing; EBS, EIP, snapshot, stopped-instance detectors
 - **Notes:**
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
   - `pre-commit` added to `requirements-dev.txt` (needed for hooks).
@@ -446,7 +446,9 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - Prices in `pricing.py` verified 2026-10-19 against the AWS public Price List files (us-east-1); the pricing pages only show examples. Re-verify before release.
   - `Config` includes `sweep_schedule`, `ttl_schedule`, `tags` for completeness; only Terraform actually uses them.
   - Not yet in `Config`: DynamoDB table name, SNS topic ARN env vars; add when `state.py` / `notify.py` need them.
-  - Tests use the shared `aws` fixture in `tests/conftest.py` (fake creds + `mock_aws`, default AMIs off for speed; use any fake AMI id). Suite ~8s; watch the 10s budget as detectors grow.
+  - Tests use the shared `aws` fixture in `tests/conftest.py` (fake creds + `mock_aws`, default AMIs off for speed; use any fake AMI id). **Suite is ~14s (97 tests), over the 10s budget**: each moto test costs ~0.3s. Options: pytest-xdist, or fewer parametrized ignore-tag cases per detector. Not decided.
+  - moto writes `StateTransitionReason` with "UTC"; real AWS writes "GMT". `ec2_stopped_long.parse_stop_time` accepts both. The unparseable-reason test uses botocore `Stubber` since moto can't produce one.
+  - `snapshots_old` skips AWS Backup snapshots by `aws:backup:` tag-key prefix; moto accepts `aws:` tags in tests.
   - `describe_addresses` has no paginator (single call returns all).
   - Fix commands chained with `&&` don't run in Windows PowerShell 5.1; noted in `docs/detectors.md`.
   - `get_client` cache lives for the warm Lambda container (not one invocation); tests call `get_client.cache_clear()`.
