@@ -136,6 +136,12 @@ variable "alert_email" {
   }
 }
 
+variable "cli_profile" {
+  description = "AWS CLI profile for the account you deploy to. Only used to add --profile to the ssm_setup_commands output; leave empty if you use the default profile."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags applied to every CloudTripwire resource."
   type        = map(string)
