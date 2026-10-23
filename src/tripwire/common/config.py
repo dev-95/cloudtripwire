@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 MODES = ("observe", "enforce")
 CHANNELS = ("telegram", "slack", "email")
+NOT_YET_AVAILABLE = {"slack": "v0.2"}
 
 
 class ConfigError(ValueError):
@@ -77,6 +78,9 @@ def load_config(env: Mapping[str, str] = os.environ) -> Config:
         errors.append("CHANNELS must list at least one channel")
     if unknown := [c for c in channels if c not in CHANNELS]:
         errors.append(f"CHANNELS has unknown values {unknown}; allowed {CHANNELS}")
+    for c in channels:
+        if c in NOT_YET_AVAILABLE:
+            errors.append(f"CHANNELS: {c!r} is not available until {NOT_YET_AVAILABLE[c]}")
     if "email" in channels and "@" not in values.get("alert_email", ""):
         errors.append("ALERT_EMAIL is required when CHANNELS includes 'email'")
 

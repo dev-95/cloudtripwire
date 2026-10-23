@@ -83,6 +83,11 @@ def test_empty_channels_rejected():
         load_config({"CHANNELS": " , "})
 
 
+def test_slack_rejected_until_v02():
+    with pytest.raises(ConfigError, match="'slack' is not available until v0.2"):
+        load_config({"CHANNELS": "telegram,Slack"})
+
+
 def test_email_channel_requires_address():
     with pytest.raises(ConfigError, match="ALERT_EMAIL"):
         load_config({"CHANNELS": "email"})

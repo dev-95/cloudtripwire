@@ -226,7 +226,7 @@ v2 can query the AWS Price List API (`pricing` client, `us-east-1` endpoint) per
 • NAT gateway nat-0abc (us-east-1): $32.85/mo, no traffic in 7 days
 • EBS vol-0a1b, 20 GB gp3 (us-east-1): $1.60/mo, unattached 12 days
 • Elastic IP 3.84.x.x (ca-central-1): $3.65/mo, not attached
-Fix commands: see the CloudWatch log link or reply /details
+Fix commands: in the sweep Lambda's CloudWatch logs.
 Mode: observe (nothing was changed)
 ```
 
@@ -446,7 +446,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - State table layout is in `docs/architecture.md`. Terraform must set the table's TTL attribute to `expires_at`. `resolve_missing` trusts its caller: the sweep handler must leave out any region where the scan or any detector failed.
   - A finding resolved and later flagged again gets a new `first_seen` (new episode), not the original one.
   - `notify.py` pins the `botocore` logger to INFO: at DEBUG botocore logs response bodies, including decrypted SSM tokens (the caplog test caught this). Failures log the error type and status/code only, never `str(e)`.
-  - Digest footer says "Fix commands: in the sweep Lambda's CloudWatch logs." instead of the spec's "reply /details" (no bot command exists). Slack returns False until M2.
+  - Digest footer: "Fix commands: in the sweep Lambda's CloudWatch logs." (spec 6.1 updated). Config rejects `slack` until v0.2; `notify.send` also returns False for it as a backstop.
   - Notify uses `ssm:GetParameter` (one call per secret, matching section 8 IAM) and `sns:Publish`.
   - Prices in `pricing.py` verified 2026-10-19 against the AWS public Price List files (us-east-1); the pricing pages only show examples. Re-verify before release.
   - `Config` includes `sweep_schedule`, `ttl_schedule`, `tags` for completeness; only Terraform actually uses them.
