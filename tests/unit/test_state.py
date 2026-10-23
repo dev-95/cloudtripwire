@@ -26,9 +26,14 @@ def table(aws):
     )
 
 
-def finding(resource_id: str = "vol-1", region: str = "us-east-1", cost: float = 1.6) -> Finding:
+def finding(
+    resource_id: str = "vol-1",
+    region: str = "us-east-1",
+    cost: float = 1.6,
+    detector: str = "ebs_unattached",
+) -> Finding:
     return Finding(
-        detector="ebs_unattached",
+        detector=detector,
         resource_id=resource_id,
         region=region,
         monthly_cost_usd=cost,
@@ -76,12 +81,15 @@ def test_open_findings_reads_floats(table):
     assert isinstance(item["monthly_cost_usd"], float)
 
 
+EBS_US = [("us-east-1", "ebs_unattached")]
+
+
 def test_resolve_missing_resolves_only_unflagged(table):
     keep, gone = finding("vol-keep"), finding("vol-gone")
     state.record_findings(table, [keep, gone], T0)
     later = T0 + timedelta(days=1)
 
-    resolved = state.resolve_missing(table, [keep], ["us-east-1"], later)
+    resolved = state.resolve_missing(table, [keep], EBS_US, later)
 
     assert [r["resource_id"] for r in resolved] == ["vol-gone"]
     assert get(table, gone)["status"] == "resolved"
@@ -93,24 +101,38 @@ def test_resolve_missing_never_touches_failed_region(table):
     broken = finding("vol-eu", region="eu-west-3")
     state.record_findings(table, [broken], T0)
 
-    # eu-west-3 errored this run, so it's absent from scanned_regions and from current.
-    resolved = state.resolve_missing(table, [], ["us-east-1"], T0 + timedelta(days=1))
+    # eu-west-3 errored this run, so none of its pairs are in `scanned`.
+    resolved = state.resolve_missing(table, [], EBS_US, T0 + timedelta(days=1))
 
     assert resolved == []
     assert get(table, broken)["status"] == "open"
 
 
+def test_resolve_missing_is_per_detector_within_a_region(table):
+    ebs = finding("vol-1", region="ca-central-1")
+    nat = finding("nat-1", region="ca-central-1", detector="nat_idle")
+    state.record_findings(table, [ebs, nat], T0)
+
+    # nat_idle failed in ca-central-1; ebs_unattached ran and no longer flags vol-1.
+    scanned = [("ca-central-1", "ebs_unattached")]
+    resolved = state.resolve_missing(table, [], scanned, T0 + timedelta(days=1))
+
+    assert [r["resource_id"] for r in resolved] == ["vol-1"]
+    assert get(table, ebs)["status"] == "resolved"
+    assert get(table, nat)["status"] == "open"
+
+
 def test_resolve_ignores_already_resolved(table):
     state.record_findings(table, [finding()], T0)
-    state.resolve_missing(table, [], ["us-east-1"], T0 + timedelta(days=1))
+    state.resolve_missing(table, [], EBS_US, T0 + timedelta(days=1))
 
-    assert state.resolve_missing(table, [], ["us-east-1"], T0 + timedelta(days=2)) == []
+    assert state.resolve_missing(table, [], EBS_US, T0 + timedelta(days=2)) == []
     assert get(table, finding())["resolved_at"] == (T0 + timedelta(days=1)).isoformat()
 
 
 def test_reopened_finding_starts_new_first_seen(table):
     state.record_findings(table, [finding()], T0)
-    state.resolve_missing(table, [], ["us-east-1"], T0 + timedelta(days=1))
+    state.resolve_missing(table, [], EBS_US, T0 + timedelta(days=1))
     back = T0 + timedelta(days=5)
 
     [out] = state.record_findings(table, [finding()], back)

@@ -5,6 +5,9 @@ from moto import mock_aws
 
 from tripwire.common import regions
 
+# Kept at import: tests may monkeypatch regions.get_client, and teardown still needs this.
+_get_client = regions.get_client
+
 
 @pytest.fixture
 def aws(monkeypatch):
@@ -16,7 +19,7 @@ def aws(monkeypatch):
         "MOTO_EC2_LOAD_DEFAULT_AMIS": "false",  # loading the AMI catalog costs ~1s per test
     }.items():
         monkeypatch.setenv(k, v)
-    regions.get_client.cache_clear()
+    _get_client.cache_clear()
     with mock_aws() as mock:
         yield mock
-    regions.get_client.cache_clear()
+    _get_client.cache_clear()

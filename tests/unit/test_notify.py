@@ -62,6 +62,35 @@ def test_digest_all_clear():
     )
 
 
+def test_digest_failure_warning_with_findings():
+    msg = notify.format_digest([finding("vol-1", 1.0)], "observe", checks_failed=2)
+
+    assert msg.splitlines()[-2:] == [
+        "Warning: 2 checks failed, see logs",
+        "Mode: observe (nothing was changed)",
+    ]
+
+
+def test_digest_failures_without_findings_is_not_an_all_clear():
+    msg = notify.format_digest([], "observe", checks_failed=1)
+
+    assert "✅" not in msg
+    assert msg == (
+        "⚠️ CloudTripwire: no zombies found in the checks that ran\n"
+        "Warning: 1 check failed, see logs\n"
+        "Mode: observe (nothing was changed)"
+    )
+
+
+def test_digest_truncation_keeps_failure_warning():
+    findings = [finding(f"vol-{i:04d}", 1.0) for i in range(200)]
+
+    msg = notify.format_digest(findings, "observe", checks_failed=3)
+
+    assert len(msg) < notify.MAX_CHARS
+    assert "Warning: 3 checks failed, see logs" in msg.splitlines()
+
+
 def test_digest_truncates_under_limit_with_more_line():
     findings = [finding(f"vol-{i:04d}", 1.0) for i in range(200)]
 

@@ -46,16 +46,28 @@ def _finding_line(f: Finding) -> str:
     return line
 
 
-def format_digest(findings: Sequence[Finding], mode: str) -> str:
-    """Daily digest, most expensive first, kept under MAX_CHARS with a "+N more" line."""
-    footer = [
-        "Fix commands: in the sweep Lambda's CloudWatch logs.",
+def format_digest(findings: Sequence[Finding], mode: str, checks_failed: int = 0) -> str:
+    """Daily digest, most expensive first, kept under MAX_CHARS with a "+N more" line.
+
+    checks_failed > 0 adds a warning (never truncated), so a broken scan can't pass
+    for an all-clear.
+    """
+    mode_line = (
         "Mode: observe (nothing was changed)"
         if mode == "observe"
-        else "Mode: enforce (the sweep only reports; it never changes resources)",
-    ]
+        else "Mode: enforce (the sweep only reports; it never changes resources)"
+    )
+    checks = "check" if checks_failed == 1 else "checks"
+    warning = [f"Warning: {checks_failed} {checks} failed, see logs"] if checks_failed else []
     if not findings:
-        return "\n".join(["✅ CloudTripwire: no zombies found", footer[1]])
+        header = (
+            "⚠️ CloudTripwire: no zombies found in the checks that ran"
+            if checks_failed
+            else "✅ CloudTripwire: no zombies found"
+        )
+        return "\n".join([header, *warning, mode_line])
+
+    footer = ["Fix commands: in the sweep Lambda's CloudWatch logs.", *warning, mode_line]
 
     ordered = sorted(findings, key=lambda f: f.monthly_cost_usd, reverse=True)
     total = Decimal(str(sum(f.monthly_cost_usd for f in ordered)))

@@ -99,21 +99,21 @@ def open_findings(table) -> list[dict[str, Any]]:
 
 
 def resolve_missing(
-    table, current: Iterable[Finding], scanned_regions: Iterable[str], now: datetime
+    table, current: Iterable[Finding], scanned: Iterable[tuple[str, str]], now: datetime
 ) -> list[dict[str, Any]]:
     """Mark open findings resolved when this sweep no longer flags them.
 
-    Only regions in `scanned_regions` are touched. The caller must leave out any region
-    where the scan (or any detector in it) failed: a region that errored must never
-    resolve its findings, or they'd reopen next run with a reset first_seen.
-    Returns the items that were resolved.
+    `scanned` holds the (region, detector) pairs that ran successfully. Only findings
+    from those pairs are touched: a check that errored must never resolve its findings,
+    or they'd reopen next run with a reset first_seen. Other detectors in the same
+    region still resolve normally. Returns the items that were resolved.
     """
     flagged = {(f.region, f.resource_id, f.detector) for f in current}
-    regions = set(scanned_regions)
+    ok_pairs = set(scanned)
     resolved = []
     for item in open_findings(table):
         key = (item["region"], item["resource_id"], item["sk"])
-        if item["region"] not in regions or key in flagged:
+        if (item["region"], item["sk"]) not in ok_pairs or key in flagged:
             continue
         try:
             table.update_item(

@@ -379,7 +379,7 @@ Each milestone ends with tests passing and something demoable.
 - [x] Detectors: `nat_idle`, `elb_no_targets`, `snapshots_old`, `ec2_stopped_long` with tests
 - [x] DynamoDB state (first_seen, resolved)
 - [x] `notify` for Telegram + email, with tests
-- [ ] Sweep handler + digest formatting
+- [x] Sweep handler + digest formatting
 - [ ] Terraform module: DynamoDB, SNS, sweep Lambda, IAM, schedule; `examples/basic`
 - [ ] CI workflow green
 - **Demo:** seeded zombies in test account → Telegram digest arrives.
@@ -435,15 +435,19 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 ## 15. Status
 
 - **Current milestone:** M1 in progress (scaffold done)
-- **Last session:** 2026-10-23, removed pytest-xdist + added moto isolation test; `state.py` (findings, action log, alert dedup) and `notify.py` (digest, Telegram, email) with tests
-- **Next step:** sweep handler: regions → detectors per region (track which regions fully succeeded) → `record_findings` → `resolve_missing` → `format_digest` → `send`
-- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email)
+- **Last session:** 2026-10-23, spec/config aligned with notify (CloudWatch footer, `slack` rejected until v0.2); sweep handler with per-(region, detector) failure tracking and tests
+- **Next step:** Terraform module: DynamoDB (TTL attribute `expires_at`), SNS, sweep Lambda, IAM, schedule; `examples/basic`. Consider a CloudWatch alarm on the sweep Lambda's `Errors` metric (see notes).
+- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler
 - **Notes:**
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
   - `pre-commit` added to `requirements-dev.txt` (needed for hooks).
   - Ruff excludes `*.md` so spec code samples aren't reformatted.
   - gitleaks pre-commit hook is a local hook using gitleaks on PATH (`winget install Gitleaks.Gitleaks`); Smart App Control blocks the binary pre-commit builds.
-  - State table layout is in `docs/architecture.md`. Terraform must set the table's TTL attribute to `expires_at`. `resolve_missing` trusts its caller: the sweep handler must leave out any region where the scan or any detector failed.
+  - State table layout is in `docs/architecture.md`. Terraform must set the table's TTL attribute to `expires_at`. `resolve_missing` takes the (region, detector) pairs that succeeded; a failed pair never resolves its findings, other detectors in that region still do.
+  - Sweep handler: regions run sequentially; `duration_s` is in the logged `sweep_summary`. Messages: findings → digest; failures → always sent with "Warning: N checks failed" (⚠️ header if nothing found); otherwise all-clear only on Mondays UTC. Each finding is logged with its `fix_command` (the digest footer points there).
+  - Sweep handler gaps: if `describe_regions`, DynamoDB, or config loading fails, the Lambda errors and **no alert is sent**. A CloudWatch alarm on Lambda `Errors` → SNS topic would cover this.
+  - `format_digest(..., checks_failed)` puts the failure warning in the footer, so truncation never drops it.
+  - Handler tests monkeypatch `regions.get_client`, `handler._region_clients`, `handler._dynamodb`, `handler._now`, and `notify.send`. `conftest.py` keeps its own reference to `get_client` for `cache_clear()`.
   - A finding resolved and later flagged again gets a new `first_seen` (new episode), not the original one.
   - `notify.py` pins the `botocore` logger to INFO: at DEBUG botocore logs response bodies, including decrypted SSM tokens (the caplog test caught this). Failures log the error type and status/code only, never `str(e)`.
   - Digest footer: "Fix commands: in the sweep Lambda's CloudWatch logs." (spec 6.1 updated). Config rejects `slack` until v0.2; `notify.send` also returns False for it as a backstop.
@@ -451,7 +455,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - Prices in `pricing.py` verified 2026-10-19 against the AWS public Price List files (us-east-1); the pricing pages only show examples. Re-verify before release.
   - `Config` includes `sweep_schedule`, `ttl_schedule`, `tags` for completeness; only Terraform actually uses them.
   - `Config.state_table` / `alert_topic_arn` come from `STATE_TABLE` / `ALERT_TOPIC_ARN`, set by Terraform (not user variables, no validation).
-  - Tests use the shared `aws` fixture in `tests/conftest.py` (fake creds + `mock_aws`, yields the mock; default AMIs off for speed; use any fake AMI id). Suite ~7s (135 tests). Use `tests/helpers.py` `client()` / `clients()` / `dynamodb()`: they cache boto3 clients per process because building one costs ~0.25–0.4s. `test_helpers.py` proves each mock still starts empty. Nested `mock_aws()` shares state with the outer mock; don't rely on nesting for isolation. pytest-xdist was tried and removed (per-worker warm-up made it slower).
+  - Tests use the shared `aws` fixture in `tests/conftest.py` (fake creds + `mock_aws`, yields the mock; default AMIs off for speed; use any fake AMI id). Suite ~8s (145 tests). Use `tests/helpers.py` `client()` / `clients()` / `dynamodb()`: they cache boto3 clients per process because building one costs ~0.25–0.4s. `test_helpers.py` proves each mock still starts empty. Nested `mock_aws()` shares state with the outer mock; don't rely on nesting for isolation. pytest-xdist was tried and removed (per-worker warm-up made it slower).
   - moto writes `StateTransitionReason` with "UTC"; real AWS writes "GMT". `ec2_stopped_long.parse_stop_time` accepts both. The unparseable-reason test uses botocore `Stubber` since moto can't produce one.
   - `snapshots_old` skips AWS Backup snapshots by `aws:backup:` tag-key prefix; moto accepts `aws:` tags in tests.
   - `describe_addresses` has no paginator (single call returns all).
