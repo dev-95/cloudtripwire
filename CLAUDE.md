@@ -309,11 +309,11 @@ Terraform outputs: Lambda ARNs, DynamoDB table name, SNS topic ARN, the SSM para
 
 ## 8. IAM (least privilege)
 
-One role per Lambda. All three get `logs:CreateLogStream`, `logs:PutLogEvents` on their own log group and `ssm:GetParameter` on `/cloudtripwire/*` (+ `kms:Decrypt` for the default SSM key), plus DynamoDB read/write on the state table only.
+One role per Lambda. All three get `logs:CreateLogStream`, `logs:PutLogEvents` on their own log group and `ssm:GetParameter` on `/cloudtripwire/*` (+ `kms:Decrypt` for the default SSM key), plus only the DynamoDB item actions each Lambda's code calls, on the state table only. `kms:Decrypt` is limited with `kms:ViaService = ssm.<region>.amazonaws.com`.
 
 | Lambda | Read actions | Write actions |
 |---|---|---|
-| sweep | `ec2:DescribeRegions`, `ec2:DescribeVolumes`, `ec2:DescribeAddresses`, `ec2:DescribeNatGateways`, `ec2:DescribeSnapshots`, `ec2:DescribeImages`, `ec2:DescribeInstances`, `elasticloadbalancing:DescribeLoadBalancers`, `elasticloadbalancing:DescribeTargetGroups`, `elasticloadbalancing:DescribeTargetHealth`, `cloudwatch:GetMetricStatistics` | `sns:Publish` (own topic) |
+| sweep | `ec2:DescribeRegions`, `ec2:DescribeVolumes`, `ec2:DescribeAddresses`, `ec2:DescribeNatGateways`, `ec2:DescribeSnapshots`, `ec2:DescribeImages`, `ec2:DescribeInstances`, `elasticloadbalancing:DescribeLoadBalancers`, `elasticloadbalancing:DescribeTargetGroups`, `elasticloadbalancing:DescribeTargetHealth`, `elasticloadbalancing:DescribeTags`, `cloudwatch:GetMetricStatistics` | `dynamodb:UpdateItem`, `dynamodb:Scan` (state table), `sns:Publish` (own topic) |
 | ttl | `ec2:DescribeRegions`, `ec2:DescribeInstances`, `rds:DescribeDBInstances`, `rds:ListTagsForResource` | `ec2:StopInstances`, `ec2:CreateTags`, `rds:StopDBInstance`, `rds:AddTagsToResource`, `sns:Publish` |
 | killswitch | `ec2:DescribeRegions`, `ec2:DescribeInstances`, `iam:ListAccessKeys` | `iam:UpdateAccessKey`, `ec2:StopInstances`, `ec2:CreateTags`, `sns:Publish` |
 
@@ -380,7 +380,7 @@ Each milestone ends with tests passing and something demoable.
 - [x] DynamoDB state (first_seen, resolved)
 - [x] `notify` for Telegram + email, with tests
 - [x] Sweep handler + digest formatting
-- [ ] Terraform module: DynamoDB, SNS, sweep Lambda, IAM, schedule; `examples/basic`
+- [x] Terraform module: DynamoDB, SNS, sweep Lambda, IAM, schedule; `examples/basic` (validated, never planned/applied)
 - [ ] CI workflow green
 - **Demo:** seeded zombies in test account → Telegram digest arrives.
 
@@ -435,9 +435,9 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 ## 15. Status
 
 - **Current milestone:** M1 in progress (scaffold done)
-- **Last session:** 2026-10-23, spec/config aligned with notify (CloudWatch footer, `slack` rejected until v0.2); sweep handler with per-(region, detector) failure tracking and tests
-- **Next step:** Terraform module: DynamoDB (TTL attribute `expires_at`), SNS, sweep Lambda, IAM, schedule; `examples/basic`. Consider a CloudWatch alarm on the sweep Lambda's `Errors` metric (see notes).
-- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler
+- **Last session:** 2026-10-23, Terraform module for the sweep path (fmt + validate pass in `terraform/` and `examples/basic`; no plan/apply run) + `docs/permissions.md`
+- **Next step:** CI workflow (`ci.yml`: ruff, pytest, terraform fmt/validate, gitleaks, IAM destructive-action grep). Then, with Devesh's approval, the first `terraform plan` / `apply` in the `tripwire-test` account for the M1 demo.
+- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep)
 - **Notes:**
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
   - `pre-commit` added to `requirements-dev.txt` (needed for hooks).
@@ -445,7 +445,12 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - gitleaks pre-commit hook is a local hook using gitleaks on PATH (`winget install Gitleaks.Gitleaks`); Smart App Control blocks the binary pre-commit builds.
   - State table layout is in `docs/architecture.md`. Terraform must set the table's TTL attribute to `expires_at`. `resolve_missing` takes the (region, detector) pairs that succeeded; a failed pair never resolves its findings, other detectors in that region still do.
   - Sweep handler: regions run sequentially; `duration_s` is in the logged `sweep_summary`. Messages: findings → digest; failures → always sent with "Warning: N checks failed" (⚠️ header if nothing found); otherwise all-clear only on Mondays UTC. Each finding is logged with its `fix_command` (the digest footer points there).
-  - Sweep handler gaps: if `describe_regions`, DynamoDB, or config loading fails, the Lambda errors and **no alert is sent**. A CloudWatch alarm on Lambda `Errors` → SNS topic would cover this.
+  - Pre-flight failures (config, `describe_regions`, DynamoDB) make the Lambda error. Covered by the `cloudtripwire-sweep-errors` alarm (Errors ≥ 1/day → SNS). **That alarm only reaches email**, not Telegram: a Telegram-only user won't hear about a crashed sweep. Options: subscribe a small forwarder, or ask for `alert_email` too.
+  - Terraform: AWS provider `~> 6.0` (6.70.0 latest on 2026-10-23), archive `~> 2.8`. `data.aws_region.current.region` (v6 name). Module zips `../src` with `archive_file` (so it must be sourced from the full repo, e.g. `github.com/dev-95/cloudtripwire//terraform`); `**` excludes verified against archive v2.8.1 docs, but the zip itself has not been built (needs plan).
+  - Terraform creates the Telegram SSM params with `REPLACE_ME` + `ignore_changes = [value]`; the user sets real values with the `ssm_setup_commands` output. Only created when `telegram` is in `channels`.
+  - No PITR on the state table (costs money; data is rebuildable). `.terraform.lock.hcl` and `.build/` are gitignored (module consumers own their lock file).
+  - `kms:Decrypt` (ViaService-scoped) kept per spec; whether the `aws/ssm` key policy makes it redundant is unverified (docs fetch failed). Check in the test account.
+  - IAM section 8 updated: sweep also needs `elasticloadbalancing:DescribeTags` (elb_no_targets) and only `dynamodb:UpdateItem` + `Scan`.
   - `format_digest(..., checks_failed)` puts the failure warning in the footer, so truncation never drops it.
   - Handler tests monkeypatch `regions.get_client`, `handler._region_clients`, `handler._dynamodb`, `handler._now`, and `notify.send`. `conftest.py` keeps its own reference to `get_client` for `cache_clear()`.
   - A finding resolved and later flagged again gets a new `first_seen` (new episode), not the original one.

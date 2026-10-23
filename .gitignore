@@ -1,5 +1,7 @@
 *.tfstate*
 .terraform/
+.terraform.lock.hcl
+.build/
 *.zip
 .env
 __pycache__/
