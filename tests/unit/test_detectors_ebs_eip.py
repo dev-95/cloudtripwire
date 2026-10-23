@@ -1,9 +1,8 @@
 from datetime import UTC, datetime, timedelta
 
-import boto3
 import pytest
 
-from tripwire.common.clients import RegionClients
+from tests.helpers import clients, launch_instance, tag
 from tripwire.common.config import Config
 from tripwire.sweep.detectors import DETECTORS, ebs_unattached, eip_unassociated
 
@@ -11,25 +10,8 @@ REGION = "us-east-1"
 CFG = Config()
 
 
-def clients(region: str = REGION) -> RegionClients:
-    return RegionClients(
-        ec2=boto3.client("ec2", region_name=region),
-        elbv2=boto3.client("elbv2", region_name=region),
-        cloudwatch=boto3.client("cloudwatch", region_name=region),
-    )
-
-
 def now() -> datetime:
     return datetime.now(UTC)
-
-
-def tag(key: str, value: str, resource: str) -> list[dict]:
-    return [{"ResourceType": resource, "Tags": [{"Key": key, "Value": value}]}]
-
-
-def launch_instance(ec2) -> str:
-    ami = "ami-0123456789abcdef0"  # moto doesn't validate it when default AMIs aren't loaded
-    return ec2.run_instances(ImageId=ami, MinCount=1, MaxCount=1)["Instances"][0]["InstanceId"]
 
 
 def test_registry_order():

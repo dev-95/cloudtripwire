@@ -428,6 +428,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 8. **Keep docs in sync.** IAM change → update `docs/permissions.md`. New detector → update `docs/detectors.md` and the README table.
 9. **Windows-friendly.** Give commands that work in PowerShell or note when Git Bash/WSL is needed.
 10. **Update the Status section below** at the end of each session.
+11. **File changes use Edit/Write only.** Shell is for running commands (pytest, ruff, git), never for writing files.
 
 ---
 

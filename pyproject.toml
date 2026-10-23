@@ -15,4 +15,5 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# Serial is fastest for now (~4s); `-n auto` (pytest-xdist) adds ~1s warm-up per worker.
 addopts = "-q"

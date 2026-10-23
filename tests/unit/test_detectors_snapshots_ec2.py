@@ -4,30 +4,13 @@ import boto3
 import pytest
 from botocore.stub import Stubber
 
+from tests.helpers import clients, launch_instance, tag
 from tripwire.common.clients import RegionClients
 from tripwire.common.config import Config
 from tripwire.sweep.detectors import ec2_stopped_long, snapshots_old
 
 REGION = "us-east-1"
 CFG = Config()  # snapshot_max_age_days=90, stopped_instance_days=7
-
-
-def clients(region: str = REGION) -> RegionClients:
-    return RegionClients(
-        ec2=boto3.client("ec2", region_name=region),
-        elbv2=boto3.client("elbv2", region_name=region),
-        cloudwatch=boto3.client("cloudwatch", region_name=region),
-    )
-
-
-def tag(key: str, value: str, resource: str) -> list[dict]:
-    return [{"ResourceType": resource, "Tags": [{"Key": key, "Value": value}]}]
-
-
-def launch_instance(ec2, **kwargs) -> str:
-    ami = "ami-0123456789abcdef0"  # moto doesn't validate it when default AMIs aren't loaded
-    resp = ec2.run_instances(ImageId=ami, MinCount=1, MaxCount=1, **kwargs)
-    return resp["Instances"][0]["InstanceId"]
 
 
 # --- snapshots_old ---
@@ -172,7 +155,8 @@ def test_ec2_respects_ignore_tag(aws, value):
 
 
 def test_ec2_skips_and_logs_unparseable_reason(aws, caplog):
-    c = clients()
+    # Own client: a Stubber must not touch the shared cached ones.
+    c = RegionClients(ec2=boto3.client("ec2", region_name=REGION), elbv2=None, cloudwatch=None)
     stub = Stubber(c.ec2)
     stub.add_response(
         "describe_instances",
