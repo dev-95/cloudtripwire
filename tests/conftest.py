@@ -17,6 +17,6 @@ def aws(monkeypatch):
     }.items():
         monkeypatch.setenv(k, v)
     regions.get_client.cache_clear()
-    with mock_aws():
-        yield
+    with mock_aws() as mock:
+        yield mock
     regions.get_client.cache_clear()
