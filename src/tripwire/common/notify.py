@@ -27,6 +27,7 @@ SNS_SUBJECT_MAX = 100
 
 TELEGRAM_TOKEN_PARAM = "/cloudtripwire/telegram_bot_token"
 TELEGRAM_CHAT_PARAM = "/cloudtripwire/telegram_chat_id"
+PLACEHOLDER = "REPLACE_ME"  # value Terraform creates the SSM parameters with (terraform/ssm.tf)
 
 LABELS = {
     "ebs_unattached": "EBS volume",
@@ -92,7 +93,9 @@ def _log_failure(channel: str, error: Exception) -> None:
     # Only the type and status/code: str(error) can contain the Telegram URL (and token).
     detail: dict[str, object] = {"event": "notify_failed", "channel": channel}
     detail["error"] = type(error).__name__
-    if isinstance(error, TelegramError):
+    if isinstance(error, TelegramNotConfigured):
+        detail["reason"] = str(error)  # names the SSM parameter only, never a value
+    elif isinstance(error, TelegramError):
         detail["status"] = error.status
         if error.description:
             detail["description"] = error.description  # already scrubbed of the token
@@ -107,8 +110,22 @@ def _secret(ssm, name: str) -> str:
     return ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
 
 
+class TelegramNotConfigured(Exception):
+    """An SSM secret still holds Terraform's placeholder; the user hasn't set it yet."""
+
+
 def _send_telegram(message: str, ssm) -> None:
     token, chat_id = _secret(ssm, TELEGRAM_TOKEN_PARAM), _secret(ssm, TELEGRAM_CHAT_PARAM)
+    unset = [
+        name
+        for name, value in ((TELEGRAM_TOKEN_PARAM, token), (TELEGRAM_CHAT_PARAM, chat_id))
+        if value.strip() == PLACEHOLDER
+    ]
+    if unset:
+        # Fail before calling Telegram: a placeholder only yields a confusing 401/404/400.
+        raise TelegramNotConfigured(
+            f"Telegram not configured: {', '.join(unset)} still {PLACEHOLDER}"
+        )
     req = urllib.request.Request(
         f"https://api.telegram.org/bot{token}/sendMessage",
         data=json.dumps({"chat_id": chat_id, "text": message}).encode(),  # plain text

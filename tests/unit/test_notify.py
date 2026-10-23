@@ -245,6 +245,33 @@ def test_telegram_error_without_json_body_logs_status_only(channels, monkeypatch
     assert "description" not in event
 
 
+@pytest.mark.parametrize(
+    "unset",
+    [
+        [notify.TELEGRAM_CHAT_PARAM],
+        [notify.TELEGRAM_TOKEN_PARAM],
+        [notify.TELEGRAM_TOKEN_PARAM, notify.TELEGRAM_CHAT_PARAM],
+    ],
+)
+def test_placeholder_secret_logs_not_configured_without_calling_telegram(
+    channels, monkeypatch, caplog, unset
+):
+    cfg, ssm, sns = channels
+    for name in unset:
+        ssm.put_parameter(Name=name, Value="REPLACE_ME", Type="SecureString", Overwrite=True)
+    monkeypatch.setattr(
+        urllib.request, "urlopen", lambda *a, **k: pytest.fail("Telegram must not be called")
+    )
+
+    assert notify.send("hello", "s", cfg, ssm, sns) == {"telegram": False, "email": True}
+
+    [event] = failure_events(caplog)
+    assert event["error"] == "TelegramNotConfigured"
+    assert event["reason"] == f"Telegram not configured: {', '.join(unset)} still REPLACE_ME"
+    assert FAKE_TOKEN not in caplog.text
+    assert FAKE_CHAT not in caplog.text
+
+
 def test_telegram_ok_false_counts_as_failure(channels, monkeypatch, caplog):
     cfg, ssm, sns = channels
     monkeypatch.setattr(
