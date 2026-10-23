@@ -1,4 +1,4 @@
-"""Shared helpers for detector tests. Use only inside the `aws` fixture."""
+"""Shared helpers for moto tests. Use only inside the `aws` fixture."""
 
 from functools import cache
 
@@ -10,7 +10,7 @@ FAKE_AMI = "ami-0123456789abcdef0"  # moto doesn't validate it when default AMIs
 
 
 @cache
-def _client(service: str, region: str):
+def client(service: str, region: str = "us-east-1"):
     # Building an EC2 client takes ~0.25s, so reuse one per process. moto intercepts
     # calls from any client while a mock is active and resets its state between mocks.
     return boto3.client(service, region_name=region)
@@ -24,9 +24,9 @@ def dynamodb(region: str = "us-east-1"):
 
 def clients(region: str = "us-east-1") -> RegionClients:
     return RegionClients(
-        ec2=_client("ec2", region),
-        elbv2=_client("elbv2", region),
-        cloudwatch=_client("cloudwatch", region),
+        ec2=client("ec2", region),
+        elbv2=client("elbv2", region),
+        cloudwatch=client("cloudwatch", region),
     )
 
 
