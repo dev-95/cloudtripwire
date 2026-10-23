@@ -15,6 +15,8 @@ from tripwire.sweep.detectors import (
     ebs_unattached,
     ec2_stopped_long,
     eip_unassociated,
+    elb_no_targets,
+    nat_idle,
     snapshots_old,
 )
 
@@ -23,6 +25,8 @@ Detect = Callable[[RegionClients, str, Config, datetime], list[Finding]]
 DETECTORS: list[tuple[str, Detect]] = [
     ("ebs_unattached", ebs_unattached.detect),
     ("eip_unassociated", eip_unassociated.detect),
+    ("nat_idle", nat_idle.detect),
+    ("elb_no_targets", elb_no_targets.detect),
     ("snapshots_old", snapshots_old.detect),
     ("ec2_stopped_long", ec2_stopped_long.detect),
 ]

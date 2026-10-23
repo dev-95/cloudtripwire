@@ -58,6 +58,60 @@ aws ec2 release-address --allocation-id eipalloc-0abc... --region us-east-1
 
 Releasing gives the address back to AWS; you usually can't get the same IP again.
 
+## `nat_idle`
+
+**Rule:** NAT gateway in state `available` that sent less than **1 MB**
+(1,000,000 bytes) in the last `nat_idle_days` (default 7), measured as the sum of
+CloudWatch `AWS/NATGateway` `BytesOutToDestination` (dimension `NatGatewayId`,
+statistic `Sum`, period 1 day). 1 MB allows for stray health checks and NTP; any
+real workload sends far more.
+
+- **No datapoints count as zero bytes.** CloudWatch publishes nothing for a
+  period with no traffic, so a NAT nobody uses has no datapoints at all.
+- **NAT gateways younger than `nat_idle_days` are skipped** (by `CreateTime`).
+  They don't have a full window of data yet, and because of the rule above a
+  brand-new NAT would otherwise look idle.
+
+**Cost:** `$0.045/hour × 730 hours = $32.85/month`. Data processing
+($0.045/GB) is extra but near zero for an idle NAT.
+
+**Age:** days since the NAT gateway's `CreateTime`.
+
+**Suggested fix:**
+
+```
+aws ec2 delete-nat-gateway --nat-gateway-id nat-0abc... --region us-east-1
+```
+
+The NAT's Elastic IP is not released when the NAT is deleted; it then shows up as
+`eip_unassociated`. Private subnets routing through the NAT lose outbound internet
+access.
+
+## `elb_no_targets`
+
+**Rule:** Application or Network Load Balancer where no target group is attached,
+or every attached target group has zero registered targets. A target counts as
+registered in any health state (`healthy`, `unhealthy`, `unused`, `draining`,
+...). Gateway Load Balancers are skipped. Tags are read with `DescribeTags` in
+batches of 20 ARNs (the API limit).
+
+**Cost:** `hourly LB price × 730`: ALB and NLB $0.0225/hour = $16.43/month.
+LCU/NLCU charges are extra but near zero with no traffic.
+
+**Age:** days since the load balancer's `CreatedTime`.
+
+**Suggested fix:**
+
+```
+aws elbv2 delete-load-balancer --load-balancer-arn arn:aws:elasticloadbalancing:... --region us-east-1
+```
+
+Target groups are not deleted with the load balancer and cost nothing on their own.
+
+**Known limitation:** an ALB that only serves redirects or fixed responses (for
+example, HTTP → HTTPS redirect on a domain with no backend) has no targets on
+purpose and will be flagged. Tag it `tripwire=ignore`.
+
 ## `snapshots_old`
 
 **Rule:** EBS snapshot owned by this account (`OwnerIds=self`) whose `StartTime`

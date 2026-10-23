@@ -18,6 +18,8 @@ def test_registry_order():
     assert [name for name, _ in DETECTORS] == [
         "ebs_unattached",
         "eip_unassociated",
+        "nat_idle",
+        "elb_no_targets",
         "snapshots_old",
         "ec2_stopped_long",
     ]

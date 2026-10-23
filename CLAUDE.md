@@ -375,8 +375,8 @@ Each milestone ends with tests passing and something demoable.
 ### M1 — Foundation + sweep (week 1)
 - [ ] Repo scaffold, MIT license, `.gitignore`, pre-commit with gitleaks + ruff
 - [ ] `common/` modules: config, regions, tags, pricing (fallback table), models
-- [ ] Detectors: `ebs_unattached`, `eip_unassociated` with moto tests
-- [ ] Detectors: `nat_idle`, `elb_no_targets`, `snapshots_old`, `ec2_stopped_long` with tests
+- [x] Detectors: `ebs_unattached`, `eip_unassociated` with moto tests
+- [x] Detectors: `nat_idle`, `elb_no_targets`, `snapshots_old`, `ec2_stopped_long` with tests
 - [ ] DynamoDB state (first_seen, resolved)
 - [ ] `notify` for Telegram + email, with tests
 - [ ] Sweep handler + digest formatting
@@ -435,9 +435,9 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 ## 15. Status
 
 - **Current milestone:** M1 in progress (scaffold done)
-- **Last session:** 2026-10-23, moved `RegionClients` to `common/clients.py`; added `snapshots_old` and `ec2_stopped_long` with moto tests, docs, README rows
-- **Next step:** decide how to get the suite back under 10s (now ~14s, see notes); then detectors `nat_idle`, `elb_no_targets` with tests
-- **Done in M1:** scaffold; models + tags; config, regions, pricing; EBS, EIP, snapshot, stopped-instance detectors
+- **Last session:** 2026-10-23, test suite sped up (cached boto3 clients); added `nat_idle` and `elb_no_targets` with moto tests, docs, README rows. All six detectors done.
+- **Next step:** DynamoDB state (`state.py`: first_seen, resolved; floats → `Decimal`)
+- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors
 - **Notes:**
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
   - `pre-commit` added to `requirements-dev.txt` (needed for hooks).
@@ -447,7 +447,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - Prices in `pricing.py` verified 2026-10-19 against the AWS public Price List files (us-east-1); the pricing pages only show examples. Re-verify before release.
   - `Config` includes `sweep_schedule`, `ttl_schedule`, `tags` for completeness; only Terraform actually uses them.
   - Not yet in `Config`: DynamoDB table name, SNS topic ARN env vars; add when `state.py` / `notify.py` need them.
-  - Tests use the shared `aws` fixture in `tests/conftest.py` (fake creds + `mock_aws`, default AMIs off for speed; use any fake AMI id). **Suite is ~14s (97 tests), over the 10s budget**: each moto test costs ~0.3s. Options: pytest-xdist, or fewer parametrized ignore-tag cases per detector. Not decided.
+  - Tests use the shared `aws` fixture in `tests/conftest.py` (fake creds + `mock_aws`, default AMIs off for speed; use any fake AMI id). Suite ~5s serial (111 tests). Use `tests/helpers.py` `clients()`: it caches boto3 clients per process because building an EC2 client costs ~0.25s (that was the old 14s). pytest-xdist is installed but off: `-n auto` made it slower (~10s, per-worker warm-up). Turn it on only if the serial suite passes ~10s.
   - moto writes `StateTransitionReason` with "UTC"; real AWS writes "GMT". `ec2_stopped_long.parse_stop_time` accepts both. The unparseable-reason test uses botocore `Stubber` since moto can't produce one.
   - `snapshots_old` skips AWS Backup snapshots by `aws:backup:` tag-key prefix; moto accepts `aws:` tags in tests.
   - `describe_addresses` has no paginator (single call returns all).
