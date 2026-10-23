@@ -92,7 +92,11 @@ def _log_failure(channel: str, error: Exception) -> None:
     # Only the type and status/code: str(error) can contain the Telegram URL (and token).
     detail: dict[str, object] = {"event": "notify_failed", "channel": channel}
     detail["error"] = type(error).__name__
-    if isinstance(error, urllib.error.HTTPError):
+    if isinstance(error, TelegramError):
+        detail["status"] = error.status
+        if error.description:
+            detail["description"] = error.description  # already scrubbed of the token
+    elif isinstance(error, urllib.error.HTTPError):
         detail["status"] = error.code
     elif isinstance(error, ClientError):
         detail["code"] = error.response.get("Error", {}).get("Code")
@@ -111,9 +115,37 @@ def _send_telegram(message: str, ssm) -> None:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
-        if not json.loads(resp.read()).get("ok"):
-            raise RuntimeError("Telegram API returned ok=false")
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+            body = resp.read()
+    except urllib.error.HTTPError as e:
+        # `from None` drops the HTTPError (its URL holds the token) from the traceback.
+        raise TelegramError(e.code, _telegram_description(e, token)) from None
+    if not json.loads(body).get("ok"):
+        raise TelegramError(200, _telegram_description(body, token))
+
+
+class TelegramError(Exception):
+    """Telegram API refused a message. Carries only safe fields: status + scrubbed description."""
+
+    def __init__(self, status: int, description: str):
+        super().__init__(f"Telegram API error {status}")
+        self.status = status
+        self.description = description
+
+
+def _telegram_description(source: bytes | urllib.error.HTTPError, token: str) -> str:
+    """Telegram's human-readable error (e.g. "Bad Request: chat not found"), token removed."""
+    try:
+        body = source.read() if isinstance(source, urllib.error.HTTPError) else source
+        description = str(json.loads(body).get("description", ""))
+    except Exception:  # no body, not JSON, not an object: just log the status
+        return ""
+    # Telegram doesn't echo the token, but never trust that: scrub it and the bot id.
+    for secret in (token, token.split(":")[0]):
+        if len(secret) >= 6:  # a malformed short "token" must not blank out normal words
+            description = description.replace(secret, "<redacted>")
+    return description[:200]
 
 
 def _sns_subject(subject: str) -> str:

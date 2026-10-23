@@ -180,13 +180,82 @@ def test_telegram_failure_never_leaks_token_and_email_still_sent(
     assert "123456" not in caplog.text
 
 
-def test_telegram_ok_false_counts_as_failure(channels, monkeypatch):
+def telegram_http_error(status: int, body: bytes) -> urllib.error.HTTPError:
+    url = f"https://api.telegram.org/bot{FAKE_TOKEN}/sendMessage"
+    return urllib.error.HTTPError(url, status, "error", {}, io.BytesIO(body))
+
+
+def failure_events(caplog) -> list[dict]:
+    return [
+        json.loads(r.getMessage())
+        for r in caplog.records
+        if r.name == "tripwire.common.notify" and "notify_failed" in r.getMessage()
+    ]
+
+
+def raise_on_urlopen(monkeypatch, error: Exception) -> None:
+    def failing_urlopen(req, timeout):
+        raise error
+
+    monkeypatch.setattr(urllib.request, "urlopen", failing_urlopen)
+
+
+def test_telegram_error_logs_description(channels, monkeypatch, caplog):
+    cfg, ssm, sns = channels
+    body = b'{"ok": false, "error_code": 400, "description": "Bad Request: chat not found"}'
+    raise_on_urlopen(monkeypatch, telegram_http_error(400, body))
+    caplog.set_level(logging.DEBUG)
+
+    assert notify.send("hello", "s", cfg, ssm, sns) == {"telegram": False, "email": True}
+
+    [event] = failure_events(caplog)
+    assert event == {
+        "event": "notify_failed",
+        "channel": "telegram",
+        "error": "TelegramError",
+        "status": 400,
+        "description": "Bad Request: chat not found",
+    }
+    assert FAKE_TOKEN not in caplog.text
+
+
+def test_telegram_description_is_scrubbed_of_token(channels, monkeypatch, caplog):
+    cfg, ssm, sns = channels
+    body = json.dumps({"ok": False, "description": f"bad token bot{FAKE_TOKEN} for bot 123456"})
+    raise_on_urlopen(monkeypatch, telegram_http_error(401, body.encode()))
+    caplog.set_level(logging.DEBUG)
+
+    notify.send("hello", "s", cfg, ssm, sns)
+
+    [event] = failure_events(caplog)
+    assert event["status"] == 401
+    assert event["description"] == "bad token bot<redacted> for bot <redacted>"
+    assert FAKE_TOKEN not in caplog.text
+    assert "123456" not in caplog.text
+
+
+def test_telegram_error_without_json_body_logs_status_only(channels, monkeypatch, caplog):
+    cfg, ssm, sns = channels
+    raise_on_urlopen(monkeypatch, telegram_http_error(502, b"<html>Bad Gateway</html>"))
+
+    notify.send("hello", "s", cfg, ssm, sns)
+
+    [event] = failure_events(caplog)
+    assert event["status"] == 502
+    assert "description" not in event
+
+
+def test_telegram_ok_false_counts_as_failure(channels, monkeypatch, caplog):
     cfg, ssm, sns = channels
     monkeypatch.setattr(
-        urllib.request, "urlopen", lambda req, timeout: FakeResponse(b'{"ok": false}')
+        urllib.request,
+        "urlopen",
+        lambda req, timeout: FakeResponse(b'{"ok": false, "description": "Forbidden"}'),
     )
 
     assert notify.send("hello", "s", cfg, ssm, sns)["telegram"] is False
+    [event] = failure_events(caplog)
+    assert event["description"] == "Forbidden"
 
 
 def test_missing_ssm_parameter_fails_only_telegram(channels, monkeypatch, caplog):
