@@ -24,8 +24,12 @@ def test_full_env():
             "CHANNELS": "telegram,Email",
             "ALERT_EMAIL": "me@example.com",
             "TAGS": '{"team": "me"}',
+            "STATE_TABLE": "cloudtripwire-state",
+            "ALERT_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:cloudtripwire-alerts",
         }
     )
+    assert cfg.state_table == "cloudtripwire-state"
+    assert cfg.alert_topic_arn == "arn:aws:sns:us-east-1:123456789012:cloudtripwire-alerts"
     assert cfg.mode == "enforce"
     assert cfg.regions == ("us-east-1", "ca-central-1")
     assert cfg.lab_mode is True

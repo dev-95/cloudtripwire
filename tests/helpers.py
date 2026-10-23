@@ -16,6 +16,12 @@ def _client(service: str, region: str):
     return boto3.client(service, region_name=region)
 
 
+@cache
+def dynamodb(region: str = "us-east-1"):
+    # Same reason: building a boto3 resource costs ~0.4s.
+    return boto3.resource("dynamodb", region_name=region)
+
+
 def clients(region: str = "us-east-1") -> RegionClients:
     return RegionClients(
         ec2=_client("ec2", region),

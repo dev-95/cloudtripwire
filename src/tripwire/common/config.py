@@ -29,6 +29,9 @@ class Config:
     channels: tuple[str, ...] = ("telegram",)
     alert_email: str = ""
     tags: Mapping[str, str] = field(default_factory=dict)
+    # Set by Terraform on every Lambda; not user-facing variables.
+    state_table: str = ""
+    alert_topic_arn: str = ""
 
 
 _INT_FIELDS = (
@@ -60,7 +63,7 @@ def load_config(env: Mapping[str, str] = os.environ) -> Config:
             errors.append(f"{name.upper()} must be one of {MODES}, got {v!r}")
         values[name] = v
 
-    for name in ("sweep_schedule", "ttl_schedule", "alert_email"):
+    for name in ("sweep_schedule", "ttl_schedule", "alert_email", "state_table", "alert_topic_arn"):
         if (v := get(name)) is not None:
             values[name] = v
 
