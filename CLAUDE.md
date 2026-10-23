@@ -373,16 +373,16 @@ CloudFormation one-click link (README): `https://console.aws.amazon.com/cloudfor
 Each milestone ends with tests passing and something demoable.
 
 ### M1 — Foundation + sweep (week 1)
-- [ ] Repo scaffold, MIT license, `.gitignore`, pre-commit with gitleaks + ruff
-- [ ] `common/` modules: config, regions, tags, pricing (fallback table), models
+- [x] Repo scaffold, MIT license, `.gitignore`, pre-commit with gitleaks + ruff
+- [x] `common/` modules: config, regions, tags, pricing (fallback table), models
 - [x] Detectors: `ebs_unattached`, `eip_unassociated` with moto tests
 - [x] Detectors: `nat_idle`, `elb_no_targets`, `snapshots_old`, `ec2_stopped_long` with tests
 - [x] DynamoDB state (first_seen, resolved)
 - [x] `notify` for Telegram + email, with tests
 - [x] Sweep handler + digest formatting
-- [x] Terraform module: DynamoDB, SNS, sweep Lambda, IAM, schedule; `examples/basic` (validated, never planned/applied)
-- [ ] CI workflow green
-- **Demo:** seeded zombies in test account → Telegram digest arrives.
+- [x] Terraform module: DynamoDB, SNS, sweep Lambda, IAM, schedule; `examples/basic` (deployed to the test account 2026-10-23)
+- [ ] CI workflow green (written; never run: no GitHub remote yet)
+- **Demo:** seeded zombies in test account → Telegram digest arrives. **Passed 2026-10-23.**
 
 ### M2 — TTL + kill switch (week 2)
 - [ ] TTL parser + tests
@@ -434,11 +434,23 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 ## 15. Status
 
-- **Current milestone:** M1 in progress (scaffold done)
-- **Last session:** 2026-10-23, Terraform `check` warning for empty `alert_email`; `.github/workflows/ci.yml` (test → terraform; secrets; iam-guard) + `scripts/check_iam.py` with tests; README CI badge
-- **Next step:** Devesh adds the GitHub remote and pushes so CI runs for the first time (then tick "CI workflow green"). After that, with approval, the first `terraform plan` / `apply` in the `tripwire-test` account for the M1 demo.
-- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep)
+- **Current milestone:** M1 nearly done. **M1 demo passed 2026-10-23**: seeded EBS volume + Elastic IP in ca-central-1 → sweep (17 regions, 0 failed checks, 2 findings, $3.73/mo, ~30–49 s) → digest delivered to Telegram and email. Only "CI workflow green" is left.
+- **Last session:** 2026-10-23, first deploy to `tripwire-test` (ca-central-1, `deploy/test/`, gitignored); seed/cleanup scripts; Telegram error descriptions logged (token scrubbed); trimmed SSM setup commands; `REPLACE_ME` detection in notify (committed, **not yet applied**)
+- **Next steps:**
+  1. Verify the scheduled run on 2026-10-24 at 13:00 UTC (Telegram + email digest; logs show `sweep_summary`). Then run `python scripts/cleanup_seed.py` (needs approval; seed costs ~$0.13/day).
+  2. kms:Decrypt removal test: drop the `DecryptSecretsViaSsm` statement in the test account, invoke, see if SSM SecureString reads still work with the `aws/ssm` key. If yes, remove it from `iam.tf`, `docs/permissions.md`, and section 8.
+  3. "Telegram not configured" when an SSM value is still `REPLACE_ME`: **code + test done** (`7965ebe`); needs plan/apply to reach the deployed Lambda.
+  4. Devesh adds the GitHub remote and pushes so CI runs for the first time (then tick "CI workflow green").
+- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep); seed/cleanup scripts; first deploy + demo
 - **Notes:**
+  - **Lessons from the first deploy (2026-10-23):**
+    - Telegram failed four ways before working: 404 (bad token), 400 (chat id still `REPLACE_ME`), 401 (token stored with surrounding quotes), 400 "chat not found" (chat id stored with quotes). Each fix was a re-stored SSM value; nothing caches it (`notify.py` reads SSM on every send).
+    - Root cause of the quoted values: pasting into `Read-Host` kept the quotes. The `ssm_setup_commands` output now uses `(Read-Host ...).Trim().Trim('"')` and `--value=$t` (`e6294ba`).
+    - Logging only the HTTP status made this slow to debug. notify now logs Telegram's `description` (token and bot id scrubbed) and, once applied, "Telegram not configured" for placeholders.
+    - `aws login` credentials need `botocore[crt]` for boto3 scripts (in `requirements-dev.txt`). Terraform and the AWS CLI read them natively.
+    - Sync `aws lambda invoke` of the sweep: use `--cli-read-timeout 310` and `AWS_MAX_ATTEMPTS=1`, or a run over 60 s gets retried (double invoke). CloudWatch logs lag ~30 s behind the invoke response.
+  - Test deployment: `deploy/test/main.tf` (gitignored): provider `allowed_account_ids = ["****4522****"]`, profile `tripwire-test`, ca-central-1, observe, channels telegram + email, `cli_profile = "tripwire-test"`. Seed: `vol-0c28487641e78b434`, `eipalloc-03428f83dad4e240b` (still up).
+  - Test suite now 173 tests at 10–12.5 s on this laptop (over the 10 s budget). Biggest single cost is moto's first EC2 call (~2 s). Revisit if CI shows the same.
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
   - `pre-commit` added to `requirements-dev.txt` (needed for hooks).
   - Ruff excludes `*.md` so spec code samples aren't reformatted.
