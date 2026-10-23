@@ -3,10 +3,10 @@
 from datetime import datetime
 
 from tripwire.common import pricing
+from tripwire.common.clients import RegionClients
 from tripwire.common.config import Config
 from tripwire.common.models import Finding
 from tripwire.common.tags import is_ignored, tags_to_dict
-from tripwire.sweep.detectors import RegionClients
 
 NAME = "eip_unassociated"
 

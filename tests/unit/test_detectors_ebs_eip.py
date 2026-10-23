@@ -3,8 +3,9 @@ from datetime import UTC, datetime, timedelta
 import boto3
 import pytest
 
+from tripwire.common.clients import RegionClients
 from tripwire.common.config import Config
-from tripwire.sweep.detectors import DETECTORS, RegionClients, ebs_unattached, eip_unassociated
+from tripwire.sweep.detectors import DETECTORS, ebs_unattached, eip_unassociated
 
 REGION = "us-east-1"
 CFG = Config()
