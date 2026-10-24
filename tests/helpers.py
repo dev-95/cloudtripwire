@@ -30,6 +30,21 @@ def clients(region: str = "us-east-1") -> RegionClients:
     )
 
 
+def create_state_table(name: str = "cloudtripwire-state"):
+    return dynamodb().create_table(
+        TableName=name,
+        KeySchema=[
+            {"AttributeName": "pk", "KeyType": "HASH"},
+            {"AttributeName": "sk", "KeyType": "RANGE"},
+        ],
+        AttributeDefinitions=[
+            {"AttributeName": "pk", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+        ],
+        BillingMode="PAY_PER_REQUEST",
+    )
+
+
 def tag(key: str, value: str, resource: str) -> list[dict]:
     return [{"ResourceType": resource, "Tags": [{"Key": key, "Value": value}]}]
 

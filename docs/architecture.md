@@ -13,6 +13,13 @@ Helpers live in [`src/tripwire/common/state.py`](../src/tripwire/common/state.py
 | Action log | `ACTION#<yyyy-mm-dd>` | `<iso timestamp>#<resource_id>` | the `Action` fields, `expires_at` |
 | Alert-once marker | `ALERT#<resource_id>` | `<alert_type>` | `alerted_at` |
 
+- The TTL Lambda's markers use `ALERT#<region>#<resource_id>` (RDS identifiers are
+  only unique per region) and alert types `ttl_unreadable#<value>`,
+  `ttl_warning#<expiry>`, `ttl_expired#<expiry>`. Including the value/expiry means a
+  changed `ttl` tag alerts again; an unchanged one never repeats.
+- Alert markers have no `expires_at` yet, so they stay until deleted (a few small
+  items per tagged resource).
+
 - Timestamps are UTC ISO 8601 strings; costs are stored as `Decimal`.
 - `expires_at` (epoch seconds, 90 days after the action) is the table's **TTL
   attribute**; DynamoDB deletes old action items for free.

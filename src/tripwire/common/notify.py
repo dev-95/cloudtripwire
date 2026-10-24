@@ -75,8 +75,11 @@ def format_digest(findings: Sequence[Finding], mode: str, checks_failed: int = 0
     total = total.quantize(Decimal("1"), ROUND_HALF_UP)
     noun = "zombie" if len(ordered) == 1 else "zombies"
     header = f"🧟 CloudTripwire: {len(ordered)} {noun} found, about ${total:,}/month"
+    return fit_message(header, [_finding_line(f) for f in ordered], footer)
 
-    lines = [_finding_line(f) for f in ordered]
+
+def fit_message(header: str, lines: Sequence[str], footer: Sequence[str]) -> str:
+    """header + as many lines as fit under MAX_CHARS + "+N more" + footer (never cut)."""
     body: list[str] = []
     for line in lines:
         rest = len(lines) - len(body) - 1  # lines still hidden if this one is added

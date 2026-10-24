@@ -53,6 +53,40 @@ Rules for every role:
   (the TTL and kill switch Lambdas will get `PutItem` for the action log and
   alert markers).
 
+## TTL Lambda (`cloudtripwire-ttl`)
+
+> **Planned:** the code exists (`src/tripwire/ttl/handler.py`), the role is added
+> to `terraform/iam.tf` with the M2 Terraform step. This is what it will need.
+
+### Read-only discovery (`Resource: "*"`)
+
+| Action | Why |
+|---|---|
+| `ec2:DescribeRegions` | List the regions enabled in the account |
+| `ec2:DescribeInstances` | Running instances, their `ttl` tags, launch time, Spot/ASG status |
+| `rds:DescribeDBInstances` | Available DB instances, their tags (`TagList` is in the response), create time, replica/cluster status |
+
+Not needed: `rds:ListTagsForResource`. `DescribeDBInstances` already returns
+each instance's `TagList` (RDS API reference, `DBInstance`, checked 2026-10-24).
+
+### Writes (enforce mode only)
+
+| Action | Resource | Why |
+|---|---|---|
+| `ec2:StopInstances` | instances | Stop an instance whose ttl expired. Never `TerminateInstances`. |
+| `ec2:CreateTags` | instances, limited to the tag key `tripwire:stopped-at` | Record when it was stopped |
+| `rds:StopDBInstance` | DB instances | Stop a DB instance whose ttl expired. Never `DeleteDBInstance`. |
+| `rds:AddTagsToResource` | DB instances, limited to the tag key `tripwire:stopped-at` | Record when it was stopped |
+
+### Scoped to CloudTripwire's own resources
+
+| Action | Resource | Why |
+|---|---|---|
+| `logs:CreateLogStream`, `logs:PutLogEvents` | `/aws/lambda/cloudtripwire-ttl` log group | Its own logs |
+| `ssm:GetParameter` | `parameter/cloudtripwire/*` | Telegram token and chat id |
+| `dynamodb:PutItem` | the `cloudtripwire-state` table | Action log and alert-once markers (`state.log_action`, `state.should_alert`). The only DynamoDB call it makes. |
+| `sns:Publish` | the `cloudtripwire-alerts` topic | Email alerts |
+
 ## Other resources
 
 - **CloudWatch alarm** `cloudtripwire-sweep-errors` publishes to the alerts topic

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from tests.helpers import client, clients, dynamodb
+from tests.helpers import client, clients, create_state_table, dynamodb
 from tripwire.common import notify, regions
 from tripwire.sweep import handler
 
@@ -26,18 +26,7 @@ def sweep(aws, monkeypatch):
     monkeypatch.setattr(handler, "_region_clients", clients)
     monkeypatch.setattr(handler, "_dynamodb", dynamodb)
     monkeypatch.setattr(handler, "_now", lambda: TUESDAY)
-    dynamodb().create_table(
-        TableName=TABLE,
-        KeySchema=[
-            {"AttributeName": "pk", "KeyType": "HASH"},
-            {"AttributeName": "sk", "KeyType": "RANGE"},
-        ],
-        AttributeDefinitions=[
-            {"AttributeName": "pk", "AttributeType": "S"},
-            {"AttributeName": "sk", "AttributeType": "S"},
-        ],
-        BillingMode="PAY_PER_REQUEST",
-    )
+    create_state_table(TABLE)
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
         notify, "send", lambda msg, subject, *a: sent.append((msg, subject)) or {"telegram": True}

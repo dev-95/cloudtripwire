@@ -248,7 +248,9 @@ Runs hourly. Supported resource types in v1: **EC2 instances, RDS DB instances**
 
 **Lab mode** (`lab_mode = true`, off by default): running EC2/RDS with **no** `ttl` tag and older than `lab_grace_hours` (default 24) are treated as expired. Intended for dedicated learning accounts.
 
-**Note:** AWS automatically restarts stopped RDS instances after 7 days. The TTL Lambda will stop them again on its next run; document this.
+**Never stopped, alert only (with the reason):** EC2 in an Auto Scaling group (`aws:autoscaling:groupName` tag), Spot Instances, Aurora cluster members, RDS read replicas and instances that have read replicas, Multi-AZ RDS for SQL Server.
+
+**Note:** AWS automatically restarts stopped RDS instances after 7 days. The TTL Lambda will stop them again on its next run (documented in `docs/ttl.md`, which has the full rules).
 
 ### 6.3 Leaked-key kill switch (`killswitch` Lambda)
 
@@ -314,7 +316,7 @@ One role per Lambda. All three get `logs:CreateLogStream`, `logs:PutLogEvents` o
 | Lambda | Read actions | Write actions |
 |---|---|---|
 | sweep | `ec2:DescribeRegions`, `ec2:DescribeVolumes`, `ec2:DescribeAddresses`, `ec2:DescribeNatGateways`, `ec2:DescribeSnapshots`, `ec2:DescribeImages`, `ec2:DescribeInstances`, `elasticloadbalancing:DescribeLoadBalancers`, `elasticloadbalancing:DescribeTargetGroups`, `elasticloadbalancing:DescribeTargetHealth`, `elasticloadbalancing:DescribeTags`, `cloudwatch:GetMetricStatistics` | `dynamodb:UpdateItem`, `dynamodb:Scan` (state table), `sns:Publish` (own topic) |
-| ttl | `ec2:DescribeRegions`, `ec2:DescribeInstances`, `rds:DescribeDBInstances`, `rds:ListTagsForResource` | `ec2:StopInstances`, `ec2:CreateTags`, `rds:StopDBInstance`, `rds:AddTagsToResource`, `sns:Publish` |
+| ttl | `ec2:DescribeRegions`, `ec2:DescribeInstances`, `rds:DescribeDBInstances` (its response includes `TagList`, so no `rds:ListTagsForResource`) | `ec2:StopInstances`, `ec2:CreateTags`, `rds:StopDBInstance`, `rds:AddTagsToResource`, `dynamodb:PutItem`, `sns:Publish` |
 | killswitch | `ec2:DescribeRegions`, `ec2:DescribeInstances`, `iam:ListAccessKeys` | `iam:UpdateAccessKey`, `ec2:StopInstances`, `ec2:CreateTags`, `sns:Publish` |
 
 - Where possible, scope write actions with a condition that excludes resources tagged `tripwire=ignore`, in addition to the code check.
@@ -386,7 +388,7 @@ Each milestone ends with tests passing and something demoable.
 
 ### M2 — TTL + kill switch (week 2)
 - [x] TTL parser + tests (`parse_ttl`, `is_expired`, `needs_warning` in `common/tags.py`)
-- [ ] TTL handler (observe + enforce), warnings, lab mode
+- [x] TTL handler (observe + enforce), warnings, lab mode (Terraform + IAM for it still to do)
 - [ ] Kill switch handler + fixtures + tests
 - [ ] Terraform: ttl + killswitch Lambdas, IAM, EventBridge rules (us-east-1 for Health events)
 - [ ] Slack channel
@@ -435,10 +437,12 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 ## 15. Status
 
-- **Current milestone:** **M1 complete** (2026-10-24). Demo passed 2026-10-23; scheduled 13:00 UTC run verified 2026-10-24; CI green on GitHub (run #3, commit `4a64a35`). Next up is M2.
-- **Last session:** 2026-10-24. Removed `kms:Decrypt` from the sweep role (`1db4f53`): applied to `tripwire-test`, waited 2 min, invoked twice a minute apart: both `notify_sent` telegram + email, no AccessDenied. Same apply shipped the `REPLACE_ME` check and trimmed SSM setup commands. Ran `cleanup_seed.py`: `vol-0c28487641e78b434` deleted, `eipalloc-03428f83dad4e240b` released, verified gone. The test stack (sweep, table, SNS, SSM params) is still deployed; it now finds nothing, so it sends the all-clear only on Mondays.
+- **Current milestone:** M2 in progress. **M1 complete** (2026-10-24; CI green on GitHub run #3, `4a64a35`). M2 done so far: TTL parser, TTL handler (code + tests, not deployed).
+- **Last session:** 2026-10-24 (second). Kill switch default set to `enforce` (ADR 0002, `70d3c2f`). TTL handler `src/tripwire/ttl/handler.py` + 28 moto tests in `test_ttl_handler.py`; rules in `docs/ttl.md`; planned TTL IAM in `docs/permissions.md`. Earlier the same day: `kms:Decrypt` dropped (`1db4f53`), seed cleaned up. The test stack (sweep only) is still deployed.
 - **Next steps:**
-  1. M2: TTL handler (parser already exists in common/tags.py)
+  1. M2: Terraform for the TTL Lambda (function, role per `docs/permissions.md` TTL section, hourly schedule, errors alarm) + `check_iam.py` on it. Consider a CreateTags/AddTagsToResource condition limiting the tag key to `tripwire:stopped-at`, and excluding `tripwire=ignore` (section 8).
+  2. Then a test-account demo: t3.micro with `ttl=30m`, observe first, then enforce (needs approval for each apply).
+  3. M2: kill switch handler + fixtures (verify Health/GuardDuty event fields first).
 - **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep); seed/cleanup scripts; first deploy + demo; scheduled run verified; kms:Decrypt dropped; seed cleaned up; CI green
 - **Notes:**
   - **Lessons from the first deploy (2026-10-23):**
@@ -451,7 +455,11 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - Applying a reviewed plan: `terraform -chdir=deploy/test plan "-out=reviewed.tfplan"` (quote the `-out=` argument in PowerShell 5.1 or it fails with "Too many command line arguments"), then `apply reviewed.tfplan`.
   - `aws login` sessions expire; Terraform then fails with "login session has expired". Run `aws login --profile tripwire-test` again.
   - `aws lambda invoke ... --log-type Tail` returns the last 4 KB of logs (base64 `LogResult`), enough to see `notify_sent` without waiting for CloudWatch.
-  - Test suite now 173 tests at 10–12.5 s on this laptop (over the 10 s budget). Biggest single cost is moto's first EC2 call (~2 s). Revisit if CI shows the same.
+  - Test suite now 202 tests, 10.6 s on this laptop (just over the 10 s budget). Biggest single cost is moto's first EC2 call (~1.5–2 s). Revisit if CI shows the same.
+  - TTL handler: one message per run (`⏰ CloudTripwire TTL: N updates`), lines ordered stopped → would stop → won't stop → warnings → unreadable; failures follow the sweep rule (always sent with the warning). Note this means a persistent failure (e.g. an SCP-denied region) alerts **every hour**; consider rate-limiting if it's noisy. Alert-once keys include the expiry/value, so a changed tag re-alerts. In enforce mode a stop is always alerted; a tagging or action-log failure after a successful stop is logged at ERROR in the `stopped` event but doesn't hide the stop.
+  - TTL tests: `ttl` fixture spies on `stop_instances`, `create_tags`, `stop_db_instance`, `add_tags_to_resource` (passing through to moto); the enforce test asserts the spy sees all four so `calls == []` in other tests is meaningful. Clock is set from the moto `LaunchTime`/`InstanceCreateTime`. moto supports Spot lifecycle, `aws:` tags on instances, Aurora members and read replicas.
+  - `notify.fit_message(header, lines, footer)` is the shared under-4,000-chars truncation (digest + TTL). `tests/helpers.create_state_table()` builds the moto table.
+  - ADR 0001 (stop-not-delete) from section 5 hasn't been written yet; 0002 exists.
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
   - `pre-commit` added to `requirements-dev.txt` (needed for hooks).
   - Ruff excludes `*.md` so spec code samples aren't reformatted.
