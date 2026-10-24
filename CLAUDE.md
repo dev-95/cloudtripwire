@@ -388,13 +388,13 @@ Each milestone ends with tests passing and something demoable.
 
 ### M2 — TTL + kill switch (week 2)
 - [x] TTL parser + tests (`parse_ttl`, `is_expired`, `needs_warning` in `common/tags.py`)
-- [x] TTL handler (observe + enforce), warnings, lab mode (Terraform + IAM for it still to do)
+- [x] TTL handler (observe + enforce), warnings, lab mode; deployed and verified on real AWS 2026-10-24 (EC2 stop path)
 - [ ] Kill switch handler + fixtures + tests
-- [ ] Terraform: ttl + killswitch Lambdas, IAM, EventBridge rules (us-east-1 for Health events) (ttl done, not yet applied)
+- [ ] Terraform: ttl + killswitch Lambdas, IAM, EventBridge rules (us-east-1 for Health events) (ttl done and applied 2026-10-24; killswitch to do)
 - [ ] Slack channel
 - [ ] Guardrails: pre-commit snippet + GitHub Action for users
 - [ ] IAM destructive-action check in CI
-- **Demo:** t3.micro with `ttl=30m` gets stopped in enforce mode; simulated Health event deactivates a test key.
+- **Demo:** t3.micro with `ttl=30m` gets stopped in enforce mode (**passed 2026-10-24**); simulated Health event deactivates a test key.
 
 ### M3 — Launch (week 3)
 - [ ] CloudFormation template mirroring the module (if decided)
@@ -437,13 +437,11 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 ## 15. Status
 
-- **Current milestone:** M2 in progress. **M1 complete** (2026-10-24; CI green on GitHub run #3, `4a64a35`). M2 done so far: TTL parser, TTL handler, TTL Terraform (written, **not applied**).
-- **Last session:** 2026-10-24 (third). TTL failure warnings deduped per day (`9a8cac8`); TTL Terraform: Lambda, role with `tripwire=ignore` + tag-key IAM conditions, hourly rule, errors alarm (`e956881`); `seed_zombies.py --ttl-instance` + cleanup terminates seed instances (`86eb819`). `deploy/test/main.tf` now `mode = "enforce"` + `ttl_function_name` output. `terraform plan` saved as `deploy/test/reviewed.tfplan`: 8 add (ttl Lambda, role, policy, log group, rule, target, permission, alarm), 1 change (sweep: new code hash + `MODE` observe→enforce), 0 destroy. **Waiting for Devesh's approval to apply.**
+- **Current milestone:** M2 in progress. **M1 complete** (2026-10-24; CI green on GitHub run #3, `4a64a35`). M2 done so far: TTL parser, TTL handler, TTL Terraform (applied, test account in `enforce`), TTL demo passed.
+- **Last session:** 2026-10-24 (fourth). Applied `reviewed.tfplan` (8 add, 1 change). TTL demo passed on real AWS: seeded `i-0ed467fd560cf3759` (t3.micro, `ttl=30m`, launched 15:44:17Z); the first invoke sent the one-hour warning; the scheduled run at 16:44:06Z stopped it ("ttl 30m, expired 29 min ago"), tagged `tripwire:stopped-at=2026-10-24T16:44:06+00:00`, wrote the `ACTION#2026-10-24` item (with undo command, `expires_at`), Telegram + email ok, `ttl_summary` stopped=1, 17 regions, 25.3 s. This confirms the `StringNotEqualsIgnoreCase` and `aws:TagKeys` IAM conditions allow the EC2 stop + tag. `cleanup_seed.py` terminated the instance (confirmed `terminated`). Sweep digest mode line fixed (`023d7e5`, not applied).
 - **Next steps:**
-  1. After approval: apply `reviewed.tfplan`. Invoke the TTL Lambda once (nothing tagged yet: expect no message, `ttl_summary` in logs).
-  2. TTL demo (each step needs approval): `python scripts/seed_zombies.py --ttl-instance` (t3.micro, ttl=30m) → wait ~30 min → hourly run (or manual invoke) stops it in enforce mode → Telegram shows "Stopped ... Undo: ..." → `python scripts/cleanup_seed.py` terminates it. Needs a default VPC in ca-central-1.
-  3. M2: kill switch handler + fixtures (verify Health/GuardDuty event fields first).
-  4. Deploy the sweep digest fix with the next approved apply: the mode line now always reads "Mode: report only (the sweep never changes anything)" (`format_digest` no longer takes `mode`). Committed, **not applied**; the deployed sweep still prints "Mode: enforce (the sweep only reports; ...)".
+  1. M2: kill switch handler + fixtures (verify Health/GuardDuty event fields first).
+  2. Deploy the sweep digest fix with the next approved apply: the mode line now always reads "Mode: report only (the sweep never changes anything)" (`format_digest` no longer takes `mode`). Committed, **not applied**; the deployed sweep still prints "Mode: enforce (the sweep only reports; ...)".
 - **Known gaps:**
   - RDS stop path (`rds:StopDBInstance`, `rds:AddTagsToResource` with the `aws:ResourceTag` / `aws:TagKeys` conditions) is **untested on real AWS**: only moto. The `--ttl-instance` demo covers EC2 only. An RDS test needs a db.t3.micro (costs money; needs approval).
 - **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep); seed/cleanup scripts; first deploy + demo; scheduled run verified; kms:Decrypt dropped; seed cleaned up; CI green
@@ -454,7 +452,8 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
     - Logging only the HTTP status made this slow to debug. notify now logs Telegram's `description` (token and bot id scrubbed) and, once applied, "Telegram not configured" for placeholders.
     - `aws login` credentials need `botocore[crt]` for boto3 scripts (in `requirements-dev.txt`). Terraform and the AWS CLI read them natively.
     - Sync `aws lambda invoke` of the sweep: use `--cli-read-timeout 310` and `AWS_MAX_ATTEMPTS=1`, or a run over 60 s gets retried (double invoke). CloudWatch logs lag ~30 s behind the invoke response.
-  - Test deployment: `deploy/test/main.tf` (gitignored): provider `allowed_account_ids = ["****4522****"]`, profile `tripwire-test`, ca-central-1, observe, channels telegram + email, `cli_profile = "tripwire-test"`. Seed resources removed 2026-10-24.
+  - Test deployment: `deploy/test/main.tf` (gitignored): provider `allowed_account_ids = ["****4522****"]`, profile `tripwire-test`, ca-central-1, `mode = "enforce"`, channels telegram + email, `cli_profile = "tripwire-test"`. Seed resources removed 2026-10-24 (volume/EIP, then the TTL instance).
+  - EventBridge `rate(1 hour)` fires right after the rule is created, then hourly from that time (here :44 past each hour), not on the clock hour.
   - Applying a reviewed plan: `terraform -chdir=deploy/test plan "-out=reviewed.tfplan"` (quote the `-out=` argument in PowerShell 5.1 or it fails with "Too many command line arguments"), then `apply reviewed.tfplan`.
   - `aws login` sessions expire; Terraform then fails with "login session has expired". Run `aws login --profile tripwire-test` again.
   - `aws lambda invoke ... --log-type Tail` returns the last 4 KB of logs (base64 `LogResult`), enough to see `notify_sent` without waiting for CloudWatch.
