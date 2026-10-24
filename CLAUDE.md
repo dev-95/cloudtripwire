@@ -443,6 +443,9 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   1. After approval: apply `reviewed.tfplan`. Invoke the TTL Lambda once (nothing tagged yet: expect no message, `ttl_summary` in logs).
   2. TTL demo (each step needs approval): `python scripts/seed_zombies.py --ttl-instance` (t3.micro, ttl=30m) → wait ~30 min → hourly run (or manual invoke) stops it in enforce mode → Telegram shows "Stopped ... Undo: ..." → `python scripts/cleanup_seed.py` terminates it. Needs a default VPC in ca-central-1.
   3. M2: kill switch handler + fixtures (verify Health/GuardDuty event fields first).
+  4. Sweep digest mode line should say "report only" regardless of `mode` (today `format_digest` prints "Mode: enforce (the sweep only reports; ...)" in enforce, which reads as if the sweep acts). Small change in `notify.format_digest` + its tests.
+- **Known gaps:**
+  - RDS stop path (`rds:StopDBInstance`, `rds:AddTagsToResource` with the `aws:ResourceTag` / `aws:TagKeys` conditions) is **untested on real AWS**: only moto. The `--ttl-instance` demo covers EC2 only. An RDS test needs a db.t3.micro (costs money; needs approval).
 - **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep); seed/cleanup scripts; first deploy + demo; scheduled run verified; kms:Decrypt dropped; seed cleaned up; CI green
 - **Notes:**
   - **Lessons from the first deploy (2026-10-23):**
