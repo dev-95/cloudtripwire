@@ -75,12 +75,10 @@ def run_detectors(
     return findings, ok, failed
 
 
-def build_message(
-    findings: list[Finding], mode: str, checks_failed: int, now: datetime
-) -> str | None:
+def build_message(findings: list[Finding], checks_failed: int, now: datetime) -> str | None:
     """Digest if anything was found or failed; weekly all-clear on Mondays; else nothing."""
     if findings or checks_failed or now.weekday() == MONDAY:
-        return notify.format_digest(findings, mode, checks_failed)
+        return notify.format_digest(findings, checks_failed)
     return None
 
 
@@ -110,7 +108,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             )
         )
 
-    message = build_message(findings, config.mode, len(failed), now)
+    message = build_message(findings, len(failed), now)
     if message:
         sent = notify.send(
             message,

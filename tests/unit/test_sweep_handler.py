@@ -94,6 +94,18 @@ def test_failing_detector_does_not_block_others_or_resolve_its_findings(sweep, m
     assert "Warning: 1 check failed, see logs" in msg
 
 
+@pytest.mark.parametrize("mode", ["observe", "enforce"])
+def test_digest_says_report_only_in_every_mode(sweep, monkeypatch, mode):
+    monkeypatch.setenv("MODE", mode)
+    clients().ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+
+    handler.handler({}, None)
+
+    [(msg, _)] = sweep
+    assert msg.splitlines()[-1] == "Mode: report only (the sweep never changes anything)"
+    assert "enforce" not in msg and "observe" not in msg
+
+
 def test_no_findings_sends_nothing_except_monday(sweep, monkeypatch):
     handler.handler({}, None)
     assert sweep == []  # Tuesday: silent

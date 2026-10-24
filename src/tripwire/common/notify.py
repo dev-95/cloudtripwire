@@ -24,6 +24,7 @@ logging.getLogger("botocore").setLevel(logging.INFO)
 MAX_CHARS = 4000  # Telegram allows 4096; keep a margin
 TIMEOUT_SECONDS = 10
 SNS_SUBJECT_MAX = 100
+DIGEST_MODE_LINE = "Mode: report only (the sweep never changes anything)"
 
 TELEGRAM_TOKEN_PARAM = "/cloudtripwire/telegram_bot_token"
 TELEGRAM_CHAT_PARAM = "/cloudtripwire/telegram_chat_id"
@@ -47,17 +48,13 @@ def _finding_line(f: Finding) -> str:
     return line
 
 
-def format_digest(findings: Sequence[Finding], mode: str, checks_failed: int = 0) -> str:
+def format_digest(findings: Sequence[Finding], checks_failed: int = 0) -> str:
     """Daily digest, most expensive first, kept under MAX_CHARS with a "+N more" line.
 
     checks_failed > 0 adds a warning (never truncated), so a broken scan can't pass
-    for an all-clear.
+    for an all-clear. The mode line is fixed: `mode` only affects TTL actions, and the
+    sweep never changes anything in either mode.
     """
-    mode_line = (
-        "Mode: observe (nothing was changed)"
-        if mode == "observe"
-        else "Mode: enforce (the sweep only reports; it never changes resources)"
-    )
     checks = "check" if checks_failed == 1 else "checks"
     warning = [f"Warning: {checks_failed} {checks} failed, see logs"] if checks_failed else []
     if not findings:
@@ -66,9 +63,9 @@ def format_digest(findings: Sequence[Finding], mode: str, checks_failed: int = 0
             if checks_failed
             else "✅ CloudTripwire: no zombies found"
         )
-        return "\n".join([header, *warning, mode_line])
+        return "\n".join([header, *warning, DIGEST_MODE_LINE])
 
-    footer = ["Fix commands: in the sweep Lambda's CloudWatch logs.", *warning, mode_line]
+    footer = ["Fix commands: in the sweep Lambda's CloudWatch logs.", *warning, DIGEST_MODE_LINE]
 
     ordered = sorted(findings, key=lambda f: f.monthly_cost_usd, reverse=True)
     total = Decimal(str(sum(f.monthly_cost_usd for f in ordered)))

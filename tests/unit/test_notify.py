@@ -36,8 +36,7 @@ def test_digest_sorted_by_cost_with_total_and_mode():
             finding("vol-small", 1.60, age=12),
             finding("nat-big", 32.85, detector="nat_idle"),
             finding("eip-mid", 3.65, detector="eip_unassociated"),
-        ],
-        "observe",
+        ]
     )
     lines = msg.splitlines()
 
@@ -46,46 +45,45 @@ def test_digest_sorted_by_cost_with_total_and_mode():
     assert lines[2].startswith("• Elastic IP eip-mid (us-east-1): $3.65/mo")
     assert lines[3].startswith("• EBS volume vol-small (us-east-1): $1.60/mo")
     assert lines[3].endswith("flagged for 12 days")
-    assert lines[-1] == "Mode: observe (nothing was changed)"
+    assert lines[-1] == "Mode: report only (the sweep never changes anything)"
 
 
 def test_digest_total_rounds_half_up_and_singular():
-    msg = notify.format_digest([finding("vol-1", 2.50)], "enforce")
+    msg = notify.format_digest([finding("vol-1", 2.50)])
 
     assert msg.splitlines()[0] == "🧟 CloudTripwire: 1 zombie found, about $3/month"
-    assert msg.splitlines()[-1].startswith("Mode: enforce")
 
 
 def test_digest_all_clear():
-    assert notify.format_digest([], "observe") == (
-        "✅ CloudTripwire: no zombies found\nMode: observe (nothing was changed)"
+    assert notify.format_digest([]) == (
+        "✅ CloudTripwire: no zombies found\nMode: report only (the sweep never changes anything)"
     )
 
 
 def test_digest_failure_warning_with_findings():
-    msg = notify.format_digest([finding("vol-1", 1.0)], "observe", checks_failed=2)
+    msg = notify.format_digest([finding("vol-1", 1.0)], checks_failed=2)
 
     assert msg.splitlines()[-2:] == [
         "Warning: 2 checks failed, see logs",
-        "Mode: observe (nothing was changed)",
+        "Mode: report only (the sweep never changes anything)",
     ]
 
 
 def test_digest_failures_without_findings_is_not_an_all_clear():
-    msg = notify.format_digest([], "observe", checks_failed=1)
+    msg = notify.format_digest([], checks_failed=1)
 
     assert "✅" not in msg
     assert msg == (
         "⚠️ CloudTripwire: no zombies found in the checks that ran\n"
         "Warning: 1 check failed, see logs\n"
-        "Mode: observe (nothing was changed)"
+        "Mode: report only (the sweep never changes anything)"
     )
 
 
 def test_digest_truncation_keeps_failure_warning():
     findings = [finding(f"vol-{i:04d}", 1.0) for i in range(200)]
 
-    msg = notify.format_digest(findings, "observe", checks_failed=3)
+    msg = notify.format_digest(findings, checks_failed=3)
 
     assert len(msg) < notify.MAX_CHARS
     assert "Warning: 3 checks failed, see logs" in msg.splitlines()
@@ -94,18 +92,18 @@ def test_digest_truncation_keeps_failure_warning():
 def test_digest_truncates_under_limit_with_more_line():
     findings = [finding(f"vol-{i:04d}", 1.0) for i in range(200)]
 
-    msg = notify.format_digest(findings, "observe")
+    msg = notify.format_digest(findings)
 
     assert len(msg) < notify.MAX_CHARS
     shown = sum(1 for line in msg.splitlines() if line.startswith("• "))
     assert 0 < shown < 200
     assert f"+{200 - shown} more" in msg.splitlines()
-    assert msg.splitlines()[-1] == "Mode: observe (nothing was changed)"
+    assert msg.splitlines()[-1] == "Mode: report only (the sweep never changes anything)"
     assert "about $200/month" in msg  # total covers hidden findings too
 
 
 def test_digest_no_more_line_when_everything_fits():
-    msg = notify.format_digest([finding("vol-1", 1.0)], "observe")
+    msg = notify.format_digest([finding("vol-1", 1.0)])
 
     assert "more" not in msg
 
