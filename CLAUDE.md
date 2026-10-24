@@ -309,7 +309,7 @@ Terraform outputs: Lambda ARNs, DynamoDB table name, SNS topic ARN, the SSM para
 
 ## 8. IAM (least privilege)
 
-One role per Lambda. All three get `logs:CreateLogStream`, `logs:PutLogEvents` on their own log group and `ssm:GetParameter` on `/cloudtripwire/*` (+ `kms:Decrypt` for the default SSM key), plus only the DynamoDB item actions each Lambda's code calls, on the state table only. `kms:Decrypt` is limited with `kms:ViaService = ssm.<region>.amazonaws.com`.
+One role per Lambda. All three get `logs:CreateLogStream`, `logs:PutLogEvents` on their own log group and `ssm:GetParameter` on `/cloudtripwire/*`, plus only the DynamoDB item actions each Lambda's code calls, on the state table only. No `kms:Decrypt`: the AWS managed `aws/ssm` key's policy already allows decryption through SSM (verified 2026-10-24).
 
 | Lambda | Read actions | Write actions |
 |---|---|---|

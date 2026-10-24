@@ -51,18 +51,6 @@ data "aws_iam_policy_document" "sweep" {
     resources = ["arn:${local.partition}:ssm:${local.region}:${local.account_id}:parameter${local.ssm_prefix}/*"]
   }
 
-  # Decrypt SecureString parameters, only when the request comes through SSM in this region.
-  statement {
-    sid       = "DecryptSecretsViaSsm"
-    actions   = ["kms:Decrypt"]
-    resources = ["arn:${local.partition}:kms:${local.region}:${local.account_id}:key/*"]
-    condition {
-      test     = "StringEquals"
-      variable = "kms:ViaService"
-      values   = ["ssm.${local.region}.amazonaws.com"]
-    }
-  }
-
   # Exactly what common/state.py uses on the sweep path.
   statement {
     sid       = "StateTable"

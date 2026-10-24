@@ -36,7 +36,6 @@ Rules for every role:
 |---|---|---|
 | `logs:CreateLogStream`, `logs:PutLogEvents` | `/aws/lambda/cloudtripwire-sweep` log group | Write its own logs. The group is created by Terraform (30-day retention), so `logs:CreateLogGroup` isn't granted. |
 | `ssm:GetParameter` | `parameter/cloudtripwire/*` | Read the Telegram bot token and chat id |
-| `kms:Decrypt` | `key/*` in this account and region, **only** with `kms:ViaService = ssm.<region>.amazonaws.com` | Decrypt those SecureString parameters. The condition means the role can't decrypt anything directly, only through SSM. With the default `aws/ssm` key this may already be allowed by the key policy (not yet verified); it's required if you switch the parameters to a customer managed key. |
 | `dynamodb:UpdateItem`, `dynamodb:Scan` | the `cloudtripwire-state` table | Record findings (upsert keeping `first_seen`), find open findings, mark them resolved. Exactly the calls the sweep makes. |
 | `sns:Publish` | the `cloudtripwire-alerts` topic | Email alerts |
 
@@ -44,6 +43,12 @@ Rules for every role:
 
 - Any write to EC2, ELB, RDS, or IAM. The sweep only reports; it never changes
   your resources in any mode.
+- `kms:Decrypt`: the SecureString parameters use the AWS managed `aws/ssm` key,
+  whose key policy already lets principals in the account decrypt through SSM.
+  Verified 2026-10-24 in the test account: with the statement removed,
+  `ssm:GetParameter` with decryption still worked and Telegram sent. If you
+  move the parameters to a customer managed key, grant `kms:Decrypt` on that
+  key with `kms:ViaService = ssm.<region>.amazonaws.com`.
 - `dynamodb:PutItem` / `GetItem` / `DeleteItem`: the sweep doesn't use them
   (the TTL and kill switch Lambdas will get `PutItem` for the action log and
   alert markers).
