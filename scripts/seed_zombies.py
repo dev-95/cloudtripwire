@@ -1,16 +1,22 @@
 """Create cheap test zombies in the TEST account only.
 
-Usage: python scripts/seed_zombies.py
+Usage:
+  python scripts/seed_zombies.py                  sweep zombies (volume + Elastic IP)
+  python scripts/seed_zombies.py --ttl-instance   TTL test instance only
 
-Creates, in ca-central-1, each tagged tripwire-seed=true:
+Default: creates, in ca-central-1, each tagged tripwire-seed=true:
   - a 1 GB unattached gp3 volume   (~$0.09/month)
   - one unassociated Elastic IP     (~$0.005/hour, ~$3.65/month)
-Remove them with: python scripts/cleanup_seed.py
+--ttl-instance: creates one t3.micro (latest Amazon Linux 2023, default VPC, IMDSv2)
+  tagged ttl=30m and tripwire-seed=true (~$0.012/hour plus an 8 GB root volume while
+  it exists). The TTL Lambda should flag it 30 minutes after launch.
+Remove everything with: python scripts/cleanup_seed.py
 
 Refuses to run unless profile tripwire-test resolves to the test account.
 Skips anything that already exists, so running it twice creates nothing new.
 """
 
+import argparse
 import sys
 
 import boto3
@@ -20,6 +26,11 @@ TEST_ACCOUNT_ID = "****4522****"
 REGION = "ca-central-1"
 SEED_TAG = {"Key": "tripwire-seed", "Value": "true"}
 SEED_FILTER = [{"Name": "tag:tripwire-seed", "Values": ["true"]}]
+# Public parameter AWS keeps pointing at the latest AL2023 AMI in each region.
+AMI_PARAMETER = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+TTL_INSTANCE_TYPE = "t3.micro"
+TTL_VALUE = "30m"
+LIVE_STATES = ["pending", "running", "stopping", "stopped"]
 
 
 class WrongAccountError(RuntimeError):
@@ -72,13 +83,55 @@ def seed(session: boto3.Session) -> dict[str, list[str]]:
     return created
 
 
-def main() -> int:
+def seed_ttl_instance(session: boto3.Session) -> str | None:
+    """Launch the ttl=30m test instance unless one is already alive. Returns its id if new."""
+    ec2 = session.client("ec2", region_name=REGION)
+    live = SEED_FILTER + [{"Name": "instance-state-name", "Values": LIVE_STATES}]
+    existing = [
+        i["InstanceId"]
+        for page in ec2.get_paginator("describe_instances").paginate(Filters=live)
+        for r in page["Reservations"]
+        for i in r["Instances"]
+    ]
+    if existing:
+        print(f"TTL instance already seeded: {existing[0]}")
+        return None
+
+    ami = session.client("ssm", region_name=REGION).get_parameter(Name=AMI_PARAMETER)
+    tags = [
+        SEED_TAG,
+        {"Key": "ttl", "Value": TTL_VALUE},
+        {"Key": "Name", "Value": "tripwire-seed-ttl"},
+    ]
+    inst = ec2.run_instances(
+        ImageId=ami["Parameter"]["Value"],
+        InstanceType=TTL_INSTANCE_TYPE,
+        MinCount=1,
+        MaxCount=1,
+        MetadataOptions={"HttpTokens": "required"},  # IMDSv2 only
+        TagSpecifications=[{"ResourceType": "instance", "Tags": tags}],
+    )["Instances"][0]
+    print(f"launched {TTL_INSTANCE_TYPE} {inst['InstanceId']} with ttl={TTL_VALUE}")
+    return inst["InstanceId"]
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Seed test resources in the test account.")
+    parser.add_argument(
+        "--ttl-instance",
+        action="store_true",
+        help=f"launch only a {TTL_INSTANCE_TYPE} tagged ttl={TTL_VALUE} (TTL Lambda test)",
+    )
+    args = parser.parse_args(argv)
     try:
         session = get_test_session()
     except WrongAccountError as e:
         print(f"REFUSED: {e}")
         return 2
-    seed(session)
+    if args.ttl_instance:
+        seed_ttl_instance(session)
+    else:
+        seed(session)
     print(f"Done. Remove with: python scripts/cleanup_seed.py   (region {REGION})")
     return 0
 

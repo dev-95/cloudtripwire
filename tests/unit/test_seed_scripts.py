@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers import launch_instance, tag
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import cleanup_seed  # noqa: E402
 import seed_zombies  # noqa: E402
@@ -51,13 +53,37 @@ def test_guard_refuses_other_profile(test_profile):
         get_session("default")
 
 
-@pytest.mark.parametrize("script", [seed_zombies, cleanup_seed])
-def test_main_refuses_wrong_account_without_touching_ec2(test_profile, monkeypatch, script):
+@pytest.mark.parametrize(
+    "run",
+    [
+        lambda: seed_zombies.main([]),
+        lambda: seed_zombies.main(["--ttl-instance"]),
+        cleanup_seed.main,
+    ],
+    ids=["seed", "seed-ttl", "cleanup"],
+)
+def test_main_refuses_wrong_account_without_touching_ec2(test_profile, monkeypatch, run):
     test_profile("123456789012")
-    monkeypatch.setattr(seed_zombies, "seed", lambda s: pytest.fail("seed must not run"))
-    monkeypatch.setattr(cleanup_seed, "cleanup", lambda s: pytest.fail("cleanup must not run"))
+    guarded = [
+        (seed_zombies, "seed"),
+        (seed_zombies, "seed_ttl_instance"),
+        (cleanup_seed, "cleanup"),
+    ]
+    for module, name in guarded:
+        monkeypatch.setattr(module, name, lambda s, n=name: pytest.fail(f"{n} must not run"))
 
-    assert script.main() == 2
+    assert run() == 2
+
+
+def test_ttl_flag_seeds_only_the_instance(test_profile, monkeypatch):
+    test_profile(seed_zombies.TEST_ACCOUNT_ID)
+    called = []
+    monkeypatch.setattr(seed_zombies, "seed", lambda s: called.append("seed"))
+    monkeypatch.setattr(seed_zombies, "seed_ttl_instance", lambda s: called.append("ttl"))
+
+    assert seed_zombies.main(["--ttl-instance"]) == 0
+    assert seed_zombies.main([]) == 0
+    assert called == ["ttl", "seed"]
 
 
 # --- seed / cleanup ---
@@ -99,7 +125,57 @@ def test_cleanup_removes_only_seed_resources(test_profile):
     assert [a["AllocationId"] for a in ec2.describe_addresses()["Addresses"]] == [keep_eip]
 
 
+def instance(ec2, iid: str) -> dict:
+    return ec2.describe_instances(InstanceIds=[iid])["Reservations"][0]["Instances"][0]
+
+
+def test_seed_ttl_instance_launches_tagged_t3_micro_once(test_profile):
+    session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
+    ec2 = session.client("ec2", region_name=REGION)
+    ssm = session.client("ssm", region_name=REGION)
+    ami = ssm.get_parameter(Name=seed_zombies.AMI_PARAMETER)["Parameter"]["Value"]
+
+    iid = seed_zombies.seed_ttl_instance(session)
+    again = seed_zombies.seed_ttl_instance(session)
+
+    inst = instance(ec2, iid)
+    tags = {t["Key"]: t["Value"] for t in inst["Tags"]}
+    assert inst["InstanceType"] == "t3.micro"
+    assert inst["ImageId"] == ami  # latest AL2023 from the public SSM parameter
+    assert inst["MetadataOptions"]["HttpTokens"] == "required"
+    assert tags["ttl"] == "30m" and tags["tripwire-seed"] == "true"
+    assert again is None  # idempotent while the instance is alive
+    assert ec2.describe_addresses()["Addresses"] == []  # no sweep zombies seeded
+
+
+def test_seed_ttl_instance_again_after_termination(test_profile):
+    session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
+    ec2 = session.client("ec2", region_name=REGION)
+    first = seed_zombies.seed_ttl_instance(session)
+    ec2.terminate_instances(InstanceIds=[first])
+
+    second = seed_zombies.seed_ttl_instance(session)
+
+    assert second is not None and second != first
+
+
+def test_cleanup_terminates_only_seed_instances(test_profile):
+    session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
+    ec2 = session.client("ec2", region_name=REGION)
+    seed_iid = seed_zombies.seed_ttl_instance(session)
+    keep_tagged = launch_instance(ec2, TagSpecifications=tag("tripwire-seed", "no", "instance"))
+    keep = launch_instance(ec2)
+
+    removed = cleanup_seed.cleanup(session)
+
+    assert removed["instances"] == [seed_iid]
+    assert instance(ec2, seed_iid)["State"]["Name"] in ("shutting-down", "terminated")
+    assert instance(ec2, keep)["State"]["Name"] == "running"
+    assert instance(ec2, keep_tagged)["State"]["Name"] == "running"
+    assert cleanup_seed.cleanup(session)["instances"] == []  # already terminated: skipped
+
+
 def test_cleanup_with_nothing_seeded(test_profile):
     session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
 
-    assert cleanup_seed.cleanup(session) == {"volumes": [], "addresses": []}
+    assert cleanup_seed.cleanup(session) == {"instances": [], "volumes": [], "addresses": []}
