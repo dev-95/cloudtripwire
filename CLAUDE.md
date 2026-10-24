@@ -55,7 +55,7 @@ It **finds** the problem, **estimates what it costs**, **alerts** the user (Tele
 These override convenience. If a feature conflicts with them, the principle wins.
 
 1. **Stop, never delete** (v1). The tool may stop EC2/RDS and deactivate keys. It never terminates, deletes, or releases anything. Deletion is the user's decision, shown as a suggested CLI command in the alert.
-2. **Observe mode is the default.** In `observe` mode the tool only reports what it *would* do. The user switches to `enforce` explicitly.
+2. **Observe mode is the default.** In `observe` mode the tool only reports what it *would* do. The user switches to `enforce` explicitly. One exception: the kill switch defaults to `enforce` (ADR 0002), because leaked keys are exploited in minutes and its actions are reversible.
 3. **Opt-out tag always respected.** Any resource tagged `tripwire=ignore` is never acted on and never flagged.
 4. **Least privilege.** Each Lambda gets its own IAM role with only the actions it needs. Every permission is listed with its reason in `docs/permissions.md`.
 5. **Zero runtime dependencies.** Lambdas use only the Python standard library + boto3 (bundled in the Lambda runtime). HTTP alerts use `urllib.request`. No `requests`, no layers.
@@ -264,7 +264,7 @@ Runs hourly. Supported resource types in v1: **EC2 instances, RDS DB instances**
 3. In every enabled region, find instances launched in the last `killswitch_lookback_minutes` (default 60) and stop them, tagging `tripwire:quarantined=true`. Skip `tripwire=ignore`.
 4. Alert immediately on all channels with: key ID (masked to last 4 chars), user, what was stopped, and the next manual steps (rotate key, check CloudTrail, check for new IAM users, contact AWS Support for billing).
 
-**Mode:** controlled separately by `killswitch_mode` (`observe` | `enforce`). **OPEN DECISION for Devesh:** default `enforce` (fast response matters more; actions are reversible) vs `observe` (consistent with the global safety default). Until decided, default to `observe` and make it a one-line change.
+**Mode:** controlled separately by `killswitch_mode` (`observe` | `enforce`). **Default `enforce`** (decided 2026-10-24, `docs/decisions/0002-killswitch-enforce-default.md`): leaked keys are exploited within minutes, faster than a human can read an alert, and every kill switch action is reversible (key set Inactive, instances stopped, nothing deleted). This is the one deliberate exception to "observe mode is the default"; users can set `observe`.
 
 ### 6.4 Notifications (`notify.py`)
 
@@ -289,7 +289,7 @@ All set through Terraform variables (and mirrored as CloudFormation parameters),
 | Variable | Default | Meaning |
 |---|---|---|
 | `mode` | `observe` | `observe` or `enforce` for sweep + TTL actions |
-| `killswitch_mode` | `observe` | See open decision in 6.3 |
+| `killswitch_mode` | `enforce` | `observe` or `enforce` for the kill switch (see 6.3, ADR 0002) |
 | `regions` | `[]` (all enabled) | Limit scanning to these regions |
 | `sweep_schedule` | `cron(0 13 * * ? *)` | Daily digest time (UTC) |
 | `ttl_schedule` | `rate(1 hour)` | TTL check frequency |
@@ -385,7 +385,7 @@ Each milestone ends with tests passing and something demoable.
 - **Demo:** seeded zombies in test account → Telegram digest arrives. **Passed 2026-10-23.**
 
 ### M2 — TTL + kill switch (week 2)
-- [ ] TTL parser + tests
+- [x] TTL parser + tests (`parse_ttl`, `is_expired`, `needs_warning` in `common/tags.py`)
 - [ ] TTL handler (observe + enforce), warnings, lab mode
 - [ ] Kill switch handler + fixtures + tests
 - [ ] Terraform: ttl + killswitch Lambdas, IAM, EventBridge rules (us-east-1 for Health events)
@@ -484,6 +484,5 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - Local gitleaks on full history (`gitleaks git --redact .`): no leaks, 15 commits.
   - Suite timing is noisy on this laptop: 8.5–13s for 159 tests across runs (same code). The 14 IAM tests take 0.06s. If CI shows it consistently over 10s, the first `ec2` call (~2s warm-up in `test_ebs_finds_unattached_volume`) is the biggest single cost.
 - **Open decisions:**
-  - Kill switch default mode: `enforce` vs `observe` (section 6.3)
   - CloudFormation one-click at launch vs Terraform-only first (section 10)
 - **Blockers:** none

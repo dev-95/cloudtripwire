@@ -17,7 +17,7 @@ class ConfigError(ValueError):
 @dataclass(frozen=True)
 class Config:
     mode: str = "observe"
-    killswitch_mode: str = "observe"
+    killswitch_mode: str = "enforce"  # docs/decisions/0002-killswitch-enforce-default.md
     regions: tuple[str, ...] = ()  # empty = all enabled regions
     sweep_schedule: str = "cron(0 13 * * ? *)"
     ttl_schedule: str = "rate(1 hour)"

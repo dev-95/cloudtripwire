@@ -10,9 +10,9 @@ variable "mode" {
 }
 
 variable "killswitch_mode" {
-  description = "observe or enforce for the leaked-key kill switch (used from M2)."
+  description = "enforce (deactivate the leaked key and stop recently launched instances, all reversible) or observe (alert only) for the leaked-key kill switch. Default enforce: see docs/decisions/0002-killswitch-enforce-default.md."
   type        = string
-  default     = "observe"
+  default     = "enforce"
 
   validation {
     condition     = contains(["observe", "enforce"], var.killswitch_mode)

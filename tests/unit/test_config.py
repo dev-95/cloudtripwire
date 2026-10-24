@@ -7,11 +7,17 @@ def test_defaults():
     assert load_config({}) == Config()
 
 
+def test_safety_defaults():
+    cfg = load_config({})
+    assert cfg.mode == "observe"  # sweep + TTL only report until the user opts in
+    assert cfg.killswitch_mode == "enforce"  # ADR 0002: leaked keys are exploited in minutes
+
+
 def test_full_env():
     cfg = load_config(
         {
             "MODE": " Enforce ",
-            "KILLSWITCH_MODE": "enforce",
+            "KILLSWITCH_MODE": "Observe",
             "REGIONS": "us-east-1, ca-central-1,,",
             "SWEEP_SCHEDULE": "cron(0 9 * * ? *)",
             "TTL_SCHEDULE": "rate(30 minutes)",
@@ -31,6 +37,7 @@ def test_full_env():
     assert cfg.state_table == "cloudtripwire-state"
     assert cfg.alert_topic_arn == "arn:aws:sns:us-east-1:123456789012:cloudtripwire-alerts"
     assert cfg.mode == "enforce"
+    assert cfg.killswitch_mode == "observe"
     assert cfg.regions == ("us-east-1", "ca-central-1")
     assert cfg.lab_mode is True
     assert cfg.lab_grace_hours == 12
