@@ -381,7 +381,7 @@ Each milestone ends with tests passing and something demoable.
 - [x] `notify` for Telegram + email, with tests
 - [x] Sweep handler + digest formatting
 - [x] Terraform module: DynamoDB, SNS, sweep Lambda, IAM, schedule; `examples/basic` (deployed to the test account 2026-10-23)
-- [ ] CI workflow green (written; never run: no GitHub remote yet)
+- [x] CI workflow green (run #3, commit `4a64a35`)
 - **Demo:** seeded zombies in test account → Telegram digest arrives. **Passed 2026-10-23.**
 
 ### M2 — TTL + kill switch (week 2)
@@ -429,17 +429,17 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 9. **Windows-friendly.** Give commands that work in PowerShell or note when Git Bash/WSL is needed.
 10. **Update the Status section below** at the end of each session.
 11. **File changes use Edit/Write only.** Shell is for running commands (pytest, ruff, git), never for writing files.
+12. Never run git push. Devesh pushes manually.
 
 ---
 
 ## 15. Status
 
-- **Current milestone:** M1 complete except "CI workflow green". **M1 demo passed 2026-10-23**; scheduled 13:00 UTC run verified 2026-10-24 (digest arrived). Next up is M2.
+- **Current milestone:** **M1 complete** (2026-10-24). Demo passed 2026-10-23; scheduled 13:00 UTC run verified 2026-10-24; CI green on GitHub (run #3, commit `4a64a35`). Next up is M2.
 - **Last session:** 2026-10-24. Removed `kms:Decrypt` from the sweep role (`1db4f53`): applied to `tripwire-test`, waited 2 min, invoked twice a minute apart: both `notify_sent` telegram + email, no AccessDenied. Same apply shipped the `REPLACE_ME` check and trimmed SSM setup commands. Ran `cleanup_seed.py`: `vol-0c28487641e78b434` deleted, `eipalloc-03428f83dad4e240b` released, verified gone. The test stack (sweep, table, SNS, SSM params) is still deployed; it now finds nothing, so it sends the all-clear only on Mondays.
 - **Next steps:**
-  1. Devesh adds the GitHub remote and pushes so CI runs for the first time (then tick "CI workflow green").
-  2. Start M2: TTL parser + tests.
-- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep); seed/cleanup scripts; first deploy + demo; scheduled run verified; kms:Decrypt dropped; seed cleaned up
+  1. M2: TTL handler (parser already exists in common/tags.py)
+- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep); seed/cleanup scripts; first deploy + demo; scheduled run verified; kms:Decrypt dropped; seed cleaned up; CI green
 - **Notes:**
   - **Lessons from the first deploy (2026-10-23):**
     - Telegram failed four ways before working: 404 (bad token), 400 (chat id still `REPLACE_ME`), 401 (token stored with surrounding quotes), 400 "chat not found" (chat id stored with quotes). Each fix was a re-stored SSM value; nothing caches it (`notify.py` reads SSM on every send).
@@ -479,7 +479,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - `describe_addresses` has no paginator (single call returns all).
   - Fix commands chained with `&&` don't run in Windows PowerShell 5.1; noted in `docs/detectors.md`.
   - `get_client` cache lives for the warm Lambda container (not one invocation); tests call `get_client.cache_clear()`.
-  - CI (`ci.yml`) has **never run**: the repo has no git remote yet, so the README badge shows nothing until the first push. Pins (checked 2026-10-23): checkout v7.0.1, setup-python v7.0.0 (skipped v7.1.0, released the day before), setup-terraform v4.0.1, gitleaks 8.30.1 binary with SHA-256 verified in the job. Terraform job tests 1.5.x (the floor in `versions.tf`) and latest 1.x.
+  - CI (`ci.yml`) first went green on GitHub at run #3 (commit `4a64a35`). Pins (checked 2026-10-23): checkout v7.0.1, setup-python v7.0.0 (skipped v7.1.0, released the day before), setup-terraform v4.0.1, gitleaks 8.30.1 binary with SHA-256 verified in the job. Terraform job tests 1.5.x (the floor in `versions.tf`) and latest 1.x.
   - `scripts/check_iam.py` is stricter than section 10's grep: it rejects any `*` in an action (e.g. `ec2:Describe*` too), Delete/Terminate/Release (case-insensitive), and fails if a file has no actions (parser miss). Reads HCL `actions`/`not_actions` and JSON/jsonencode `Action`/`NotAction`. Add `cloudformation/cloudtripwire.yaml` to its args when that exists.
   - Local gitleaks on full history (`gitleaks git --redact .`): no leaks, 15 commits.
   - Suite timing is noisy on this laptop: 8.5–13s for 159 tests across runs (same code). The 14 IAM tests take 0.06s. If CI shows it consistently over 10s, the first `ec2` call (~2s warm-up in `test_ebs_finds_unattached_volume`) is the biggest single cost.
