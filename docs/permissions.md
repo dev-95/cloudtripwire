@@ -55,9 +55,6 @@ Rules for every role:
 
 ## TTL Lambda (`cloudtripwire-ttl`)
 
-> **Planned:** the code exists (`src/tripwire/ttl/handler.py`), the role is added
-> to `terraform/iam.tf` with the M2 Terraform step. This is what it will need.
-
 ### Read-only discovery (`Resource: "*"`)
 
 | Action | Why |
@@ -71,12 +68,28 @@ each instance's `TagList` (RDS API reference, `DBInstance`, checked 2026-10-24).
 
 ### Writes (enforce mode only)
 
-| Action | Resource | Why |
+Resources: `arn:aws:ec2:*:<account>:instance/*` and `arn:aws:rds:*:<account>:db:*`
+(every region, because the TTL Lambda checks every enabled region).
+
+| Action | Conditions | Why |
 |---|---|---|
-| `ec2:StopInstances` | instances | Stop an instance whose ttl expired. Never `TerminateInstances`. |
-| `ec2:CreateTags` | instances, limited to the tag key `tripwire:stopped-at` | Record when it was stopped |
-| `rds:StopDBInstance` | DB instances | Stop a DB instance whose ttl expired. Never `DeleteDBInstance`. |
-| `rds:AddTagsToResource` | DB instances, limited to the tag key `tripwire:stopped-at` | Record when it was stopped |
+| `ec2:StopInstances`, `rds:StopDBInstance` | not tagged `tripwire=ignore` | Stop a resource whose ttl expired. Never `TerminateInstances` / `DeleteDBInstance`. |
+| `ec2:CreateTags`, `rds:AddTagsToResource` | not tagged `tripwire=ignore`; the request may only set the tag key `tripwire:stopped-at` | Record when it was stopped. It can't add, change or remove any other tag (so it can't remove your `tripwire=ignore`). |
+
+How the conditions work (`terraform/iam.tf`):
+
+- `StringNotEqualsIgnoreCase` on `aws:ResourceTag/tripwire` = `ignore`: IAM itself
+  refuses to stop or tag an ignored resource, even if the code had a bug. The code
+  checks the tag too (`tags.is_ignored`), so in normal operation IAM never has to
+  refuse. A negated operator is true when the tag is missing, so untagged resources
+  are allowed.
+- `ForAllValues:StringEquals` on `aws:TagKeys` = `tripwire:stopped-at`, plus `Null`
+  `aws:TagKeys` = `false`: every tag key in the request must be
+  `tripwire:stopped-at`. The `Null` check matters because `ForAllValues` is true
+  when the request has no tag keys at all.
+- RDS supports `aws:ResourceTag`, `aws:RequestTag` and `aws:TagKeys` for DB
+  instances (RDS User Guide, "How Amazon RDS works with IAM", ABAC: Yes; checked
+  2026-10-24). EC2 supports them on instances.
 
 ### Scoped to CloudTripwire's own resources
 
@@ -89,9 +102,10 @@ each instance's `TagList` (RDS API reference, `DBInstance`, checked 2026-10-24).
 
 ## Other resources
 
-- **CloudWatch alarm** `cloudtripwire-sweep-errors` publishes to the alerts topic
-  if the sweep Lambda errors or times out. This uses the topic's default access
-  policy (same account); no extra IAM.
-- **EventBridge rule** `cloudtripwire-sweep` invokes the Lambda through a
-  resource-based permission (`lambda:InvokeFunction` for `events.amazonaws.com`,
-  limited to that rule's ARN).
+- **CloudWatch alarms** `cloudtripwire-sweep-errors` and `cloudtripwire-ttl-errors`
+  publish to the alerts topic if that Lambda errors or times out (at most once a
+  day each). This uses the topic's default access policy (same account); no extra
+  IAM.
+- **EventBridge rules** `cloudtripwire-sweep` and `cloudtripwire-ttl` invoke their
+  Lambda through a resource-based permission (`lambda:InvokeFunction` for
+  `events.amazonaws.com`, limited to that rule's ARN).

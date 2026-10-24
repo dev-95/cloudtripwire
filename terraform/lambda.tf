@@ -52,3 +52,45 @@ resource "aws_lambda_function" "sweep" {
     }
   }
 }
+
+resource "aws_cloudwatch_log_group" "ttl" {
+  name              = "/aws/lambda/${local.name}-ttl"
+  retention_in_days = 30
+  tags              = var.tags
+}
+
+resource "aws_lambda_function" "ttl" {
+  function_name    = "${local.name}-ttl"
+  description      = "CloudTripwire hourly TTL enforcement"
+  role             = aws_iam_role.ttl.arn
+  runtime          = "python3.12"
+  handler          = "tripwire.ttl.handler.handler"
+  filename         = data.archive_file.lambda.output_path
+  source_code_hash = data.archive_file.lambda.output_base64sha256
+  timeout          = 300
+  memory_size      = 256
+
+  environment {
+    variables = {
+      MODE            = var.mode
+      REGIONS         = join(",", var.regions)
+      LAB_MODE        = tostring(var.lab_mode)
+      LAB_GRACE_HOURS = tostring(var.lab_grace_hours)
+      CHANNELS        = join(",", var.channels)
+      ALERT_EMAIL     = var.alert_email
+      STATE_TABLE     = aws_dynamodb_table.state.name
+      ALERT_TOPIC_ARN = aws_sns_topic.alerts.arn
+    }
+  }
+
+  tags = var.tags
+
+  depends_on = [aws_cloudwatch_log_group.ttl, aws_iam_role_policy.ttl]
+
+  lifecycle {
+    precondition {
+      condition     = !contains(var.channels, "email") || var.alert_email != ""
+      error_message = "alert_email is required when channels includes \"email\"."
+    }
+  }
+}

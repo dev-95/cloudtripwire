@@ -319,7 +319,7 @@ One role per Lambda. All three get `logs:CreateLogStream`, `logs:PutLogEvents` o
 | ttl | `ec2:DescribeRegions`, `ec2:DescribeInstances`, `rds:DescribeDBInstances` (its response includes `TagList`, so no `rds:ListTagsForResource`) | `ec2:StopInstances`, `ec2:CreateTags`, `rds:StopDBInstance`, `rds:AddTagsToResource`, `dynamodb:PutItem`, `sns:Publish` |
 | killswitch | `ec2:DescribeRegions`, `ec2:DescribeInstances`, `iam:ListAccessKeys` | `iam:UpdateAccessKey`, `ec2:StopInstances`, `ec2:CreateTags`, `sns:Publish` |
 
-- Where possible, scope write actions with a condition that excludes resources tagged `tripwire=ignore`, in addition to the code check.
+- Where possible, scope write actions with a condition that excludes resources tagged `tripwire=ignore`, in addition to the code check. Done for ttl: `StringNotEqualsIgnoreCase aws:ResourceTag/tripwire = ignore` on stop + tag actions, and its tag actions may only set `tripwire:stopped-at` (`aws:TagKeys`).
 - **No** `Delete*`, `Terminate*`, `Release*`, or `iam:*` wildcards anywhere. CI should fail if a policy contains them (simple grep check in `ci.yml`).
 - Keep `docs/permissions.md` in sync with `terraform/iam.tf`.
 
@@ -390,7 +390,7 @@ Each milestone ends with tests passing and something demoable.
 - [x] TTL parser + tests (`parse_ttl`, `is_expired`, `needs_warning` in `common/tags.py`)
 - [x] TTL handler (observe + enforce), warnings, lab mode (Terraform + IAM for it still to do)
 - [ ] Kill switch handler + fixtures + tests
-- [ ] Terraform: ttl + killswitch Lambdas, IAM, EventBridge rules (us-east-1 for Health events)
+- [ ] Terraform: ttl + killswitch Lambdas, IAM, EventBridge rules (us-east-1 for Health events) (ttl done, not yet applied)
 - [ ] Slack channel
 - [ ] Guardrails: pre-commit snippet + GitHub Action for users
 - [ ] IAM destructive-action check in CI

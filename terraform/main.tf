@@ -1,4 +1,5 @@
-# CloudTripwire module: sweep path (daily zombie scan -> DynamoDB -> Telegram/email).
+# CloudTripwire module: sweep path (daily zombie scan -> DynamoDB -> Telegram/email)
+# and TTL path (hourly ttl-tag check -> stop in enforce mode -> Telegram/email).
 # Region and account come from the caller's provider; nothing is hard-coded.
 
 data "aws_caller_identity" "current" {}

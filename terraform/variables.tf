@@ -54,7 +54,7 @@ variable "ttl_schedule" {
 }
 
 variable "lab_mode" {
-  description = "Treat running EC2/RDS with no ttl tag as expired after lab_grace_hours (used from M2). For dedicated learning accounts."
+  description = "Treat running EC2/RDS with no ttl tag as expired after lab_grace_hours. For dedicated learning accounts."
   type        = bool
   default     = false
 }

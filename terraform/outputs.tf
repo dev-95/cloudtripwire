@@ -3,6 +3,11 @@ output "sweep_function_name" {
   value       = aws_lambda_function.sweep.function_name
 }
 
+output "ttl_function_name" {
+  description = "TTL Lambda name. Run it now: aws lambda invoke --function-name <name> out.json"
+  value       = aws_lambda_function.ttl.function_name
+}
+
 output "state_table_name" {
   description = "DynamoDB table holding findings, the action log and alert markers."
   value       = aws_dynamodb_table.state.name
