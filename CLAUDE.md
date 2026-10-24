@@ -434,14 +434,12 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 ## 15. Status
 
-- **Current milestone:** M1 nearly done. **M1 demo passed 2026-10-23**: seeded EBS volume + Elastic IP in ca-central-1 → sweep (17 regions, 0 failed checks, 2 findings, $3.73/mo, ~30–49 s) → digest delivered to Telegram and email. Only "CI workflow green" is left.
-- **Last session:** 2026-10-23, first deploy to `tripwire-test` (ca-central-1, `deploy/test/`, gitignored); seed/cleanup scripts; Telegram error descriptions logged (token scrubbed); trimmed SSM setup commands; `REPLACE_ME` detection in notify (committed, **not yet applied**)
+- **Current milestone:** M1 complete except "CI workflow green". **M1 demo passed 2026-10-23**; scheduled 13:00 UTC run verified 2026-10-24 (digest arrived). Next up is M2.
+- **Last session:** 2026-10-24. Removed `kms:Decrypt` from the sweep role (`1db4f53`): applied to `tripwire-test`, waited 2 min, invoked twice a minute apart: both `notify_sent` telegram + email, no AccessDenied. Same apply shipped the `REPLACE_ME` check and trimmed SSM setup commands. Ran `cleanup_seed.py`: `vol-0c28487641e78b434` deleted, `eipalloc-03428f83dad4e240b` released, verified gone. The test stack (sweep, table, SNS, SSM params) is still deployed; it now finds nothing, so it sends the all-clear only on Mondays.
 - **Next steps:**
-  1. Verify the scheduled run on 2026-10-24 at 13:00 UTC (Telegram + email digest; logs show `sweep_summary`). Then run `python scripts/cleanup_seed.py` (needs approval; seed costs ~$0.13/day).
-  2. kms:Decrypt removal test: drop the `DecryptSecretsViaSsm` statement in the test account, invoke, see if SSM SecureString reads still work with the `aws/ssm` key. If yes, remove it from `iam.tf`, `docs/permissions.md`, and section 8.
-  3. "Telegram not configured" when an SSM value is still `REPLACE_ME`: **code + test done** (`7965ebe`); needs plan/apply to reach the deployed Lambda.
-  4. Devesh adds the GitHub remote and pushes so CI runs for the first time (then tick "CI workflow green").
-- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep); seed/cleanup scripts; first deploy + demo
+  1. Devesh adds the GitHub remote and pushes so CI runs for the first time (then tick "CI workflow green").
+  2. Start M2: TTL parser + tests.
+- **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep); seed/cleanup scripts; first deploy + demo; scheduled run verified; kms:Decrypt dropped; seed cleaned up
 - **Notes:**
   - **Lessons from the first deploy (2026-10-23):**
     - Telegram failed four ways before working: 404 (bad token), 400 (chat id still `REPLACE_ME`), 401 (token stored with surrounding quotes), 400 "chat not found" (chat id stored with quotes). Each fix was a re-stored SSM value; nothing caches it (`notify.py` reads SSM on every send).
@@ -449,7 +447,10 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
     - Logging only the HTTP status made this slow to debug. notify now logs Telegram's `description` (token and bot id scrubbed) and, once applied, "Telegram not configured" for placeholders.
     - `aws login` credentials need `botocore[crt]` for boto3 scripts (in `requirements-dev.txt`). Terraform and the AWS CLI read them natively.
     - Sync `aws lambda invoke` of the sweep: use `--cli-read-timeout 310` and `AWS_MAX_ATTEMPTS=1`, or a run over 60 s gets retried (double invoke). CloudWatch logs lag ~30 s behind the invoke response.
-  - Test deployment: `deploy/test/main.tf` (gitignored): provider `allowed_account_ids = ["****4522****"]`, profile `tripwire-test`, ca-central-1, observe, channels telegram + email, `cli_profile = "tripwire-test"`. Seed: `vol-0c28487641e78b434`, `eipalloc-03428f83dad4e240b` (still up).
+  - Test deployment: `deploy/test/main.tf` (gitignored): provider `allowed_account_ids = ["****4522****"]`, profile `tripwire-test`, ca-central-1, observe, channels telegram + email, `cli_profile = "tripwire-test"`. Seed resources removed 2026-10-24.
+  - Applying a reviewed plan: `terraform -chdir=deploy/test plan "-out=reviewed.tfplan"` (quote the `-out=` argument in PowerShell 5.1 or it fails with "Too many command line arguments"), then `apply reviewed.tfplan`.
+  - `aws login` sessions expire; Terraform then fails with "login session has expired". Run `aws login --profile tripwire-test` again.
+  - `aws lambda invoke ... --log-type Tail` returns the last 4 KB of logs (base64 `LogResult`), enough to see `notify_sent` without waiting for CloudWatch.
   - Test suite now 173 tests at 10–12.5 s on this laptop (over the 10 s budget). Biggest single cost is moto's first EC2 call (~2 s). Revisit if CI shows the same.
   - Windows Application Control blocks `.venv\Scripts\pytest.exe`; run `.\.venv\Scripts\python.exe -m pytest` instead.
   - `pre-commit` added to `requirements-dev.txt` (needed for hooks).
@@ -461,7 +462,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - Terraform: AWS provider `~> 6.0` (6.70.0 latest on 2026-10-23), archive `~> 2.8`. `data.aws_region.current.region` (v6 name). Module zips `../src` with `archive_file` (so it must be sourced from the full repo, e.g. `github.com/dev-95/cloudtripwire//terraform`); `**` excludes verified against archive v2.8.1 docs, but the zip itself has not been built (needs plan).
   - Terraform creates the Telegram SSM params with `REPLACE_ME` + `ignore_changes = [value]`; the user sets real values with the `ssm_setup_commands` output. Only created when `telegram` is in `channels`.
   - No PITR on the state table (costs money; data is rebuildable). `.terraform.lock.hcl` and `.build/` are gitignored (module consumers own their lock file).
-  - `kms:Decrypt` (ViaService-scoped) kept per spec; whether the `aws/ssm` key policy makes it redundant is unverified (docs fetch failed). Check in the test account.
+  - `kms:Decrypt` removed 2026-10-24: the `aws/ssm` key policy covers SSM decryption (verified in the test account). A customer managed key would need it back (noted in `docs/permissions.md`).
   - IAM section 8 updated: sweep also needs `elasticloadbalancing:DescribeTags` (elb_no_targets) and only `dynamodb:UpdateItem` + `Scan`.
   - `format_digest(..., checks_failed)` puts the failure warning in the footer, so truncation never drops it.
   - Handler tests monkeypatch `regions.get_client`, `handler._region_clients`, `handler._dynamodb`, `handler._now`, and `notify.send`. `conftest.py` keeps its own reference to `get_client` for `cache_clear()`.
