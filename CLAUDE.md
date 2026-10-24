@@ -437,11 +437,11 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 ## 15. Status
 
-- **Current milestone:** M2 in progress. **M1 complete** (2026-10-24; CI green on GitHub run #3, `4a64a35`). M2 done so far: TTL parser, TTL handler (code + tests, not deployed).
-- **Last session:** 2026-10-24 (second). Kill switch default set to `enforce` (ADR 0002, `70d3c2f`). TTL handler `src/tripwire/ttl/handler.py` + 28 moto tests in `test_ttl_handler.py`; rules in `docs/ttl.md`; planned TTL IAM in `docs/permissions.md`. Earlier the same day: `kms:Decrypt` dropped (`1db4f53`), seed cleaned up. The test stack (sweep only) is still deployed.
+- **Current milestone:** M2 in progress. **M1 complete** (2026-10-24; CI green on GitHub run #3, `4a64a35`). M2 done so far: TTL parser, TTL handler, TTL Terraform (written, **not applied**).
+- **Last session:** 2026-10-24 (third). TTL failure warnings deduped per day (`9a8cac8`); TTL Terraform: Lambda, role with `tripwire=ignore` + tag-key IAM conditions, hourly rule, errors alarm (`e956881`); `seed_zombies.py --ttl-instance` + cleanup terminates seed instances (`86eb819`). `deploy/test/main.tf` now `mode = "enforce"` + `ttl_function_name` output. `terraform plan` saved as `deploy/test/reviewed.tfplan`: 8 add (ttl Lambda, role, policy, log group, rule, target, permission, alarm), 1 change (sweep: new code hash + `MODE` observe→enforce), 0 destroy. **Waiting for Devesh's approval to apply.**
 - **Next steps:**
-  1. M2: Terraform for the TTL Lambda (function, role per `docs/permissions.md` TTL section, hourly schedule, errors alarm) + `check_iam.py` on it. Consider a CreateTags/AddTagsToResource condition limiting the tag key to `tripwire:stopped-at`, and excluding `tripwire=ignore` (section 8).
-  2. Then a test-account demo: t3.micro with `ttl=30m`, observe first, then enforce (needs approval for each apply).
+  1. After approval: apply `reviewed.tfplan`. Invoke the TTL Lambda once (nothing tagged yet: expect no message, `ttl_summary` in logs).
+  2. TTL demo (each step needs approval): `python scripts/seed_zombies.py --ttl-instance` (t3.micro, ttl=30m) → wait ~30 min → hourly run (or manual invoke) stops it in enforce mode → Telegram shows "Stopped ... Undo: ..." → `python scripts/cleanup_seed.py` terminates it. Needs a default VPC in ca-central-1.
   3. M2: kill switch handler + fixtures (verify Health/GuardDuty event fields first).
 - **Done in M1:** scaffold; models + tags; config, regions, pricing; all six detectors; DynamoDB state; notify (Telegram + email); sweep handler; Terraform module (sweep); seed/cleanup scripts; first deploy + demo; scheduled run verified; kms:Decrypt dropped; seed cleaned up; CI green
 - **Notes:**
