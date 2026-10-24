@@ -3,6 +3,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.helpers import FAKE_AMI, client, create_state_table, dynamodb, launch_instance
 from tripwire.common import notify, regions
@@ -360,6 +361,55 @@ def test_failing_listing_still_alerts_with_warning(ttl, monkeypatch):
     assert msg.startswith("⚠️ CloudTripwire TTL: nothing to report in the checks that ran")
     assert "Warning: 1 check failed, see logs" in msg
     assert summary["checks_failed"] == 1
+
+
+def test_failure_warning_sent_once_per_day_per_region_and_error_code(ttl, monkeypatch):
+    sent, clock, calls = ttl
+    rds = client("rds", REGION)
+    error = {"code": "AccessDenied"}
+
+    def broken(*a, **kw):
+        raise ClientError({"Error": {"Code": error["code"], "Message": "x"}}, "DescribeDBInstances")
+
+    monkeypatch.setattr(rds, "get_paginator", broken)
+    clock.now = datetime(2026, 10, 24, 1, 0, tzinfo=UTC)
+
+    handler.handler({}, None)
+    clock.now += timedelta(hours=5)
+    summary = handler.handler({}, None)  # same day, same error: silent
+
+    assert len(sent) == 1
+    assert summary["checks_failed"] == 1 and summary["failures_reported"] == 0
+
+    error["code"] = "Throttling"  # a different error the same day is new
+    handler.handler({}, None)
+    assert len(sent) == 2
+
+    clock.now = datetime(2026, 10, 25, 0, 30, tzinfo=UTC)  # next UTC day
+    error["code"] = "AccessDenied"
+    handler.handler({}, None)
+    assert len(sent) == 3
+    assert "Warning: 1 check failed, see logs" in sent[-1]
+
+
+def test_repeated_failure_does_not_hide_new_alerts(ttl, monkeypatch):
+    sent, clock, calls = ttl
+    rds = client("rds", REGION)
+
+    def broken(*a, **kw):
+        raise RuntimeError("simulated AccessDenied")
+
+    monkeypatch.setattr(rds, "get_paginator", broken)
+    handler.handler({}, None)  # failure reported
+    iid, launched = ec2_with({"ttl": "tomorrow"})
+    clock.now = launched + timedelta(hours=1)
+
+    handler.handler({}, None)
+
+    msg = sent[-1]
+    assert len(sent) == 2
+    assert f"Unreadable ttl tag 'tomorrow' on EC2 instance {iid}" in msg
+    assert "Warning" not in msg  # already reported today
 
 
 def test_tag_failure_after_stop_is_still_alerted(ttl, monkeypatch, caplog):

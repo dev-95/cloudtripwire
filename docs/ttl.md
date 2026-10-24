@@ -35,8 +35,11 @@ resource and expiry: if you change the `ttl` tag, the new expiry gets its own
 warning and expiry alert.
 
 Errors are handled per region and per resource: one failure is logged
-(`check_failed`) and the run continues. As with the sweep, a run with any
-failed check always sends a message that includes "Warning: N checks failed".
+(`check_failed`, every time) and the run continues. The alert says "Warning: N
+checks failed" the first time a (region, error code) pair fails each UTC day.
+After that the same failure stays in the logs only, so a lasting problem (a
+region blocked by an SCP, a missing permission) alerts once a day, not hourly. A
+new error code, a new region or the next day alerts again.
 
 ## Never stopped (alert only)
 

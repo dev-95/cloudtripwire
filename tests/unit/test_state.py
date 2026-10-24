@@ -178,3 +178,12 @@ def test_should_alert_once_per_resource_and_type(table):
     assert state.should_alert(table, "i-1", "ttl_warning", T0 + timedelta(hours=1)) is False
     assert state.should_alert(table, "i-1", "ttl_unreadable", T0) is True
     assert state.should_alert(table, "i-2", "ttl_warning", T0) is True
+
+
+def test_should_alert_keep_for_sets_ttl(table):
+    state.should_alert(table, "i-1", "short", T0, keep_for=timedelta(days=2))
+    state.should_alert(table, "i-1", "forever", T0)
+    short = table.get_item(Key={"pk": "ALERT#i-1", "sk": "short"})["Item"]
+    forever = table.get_item(Key={"pk": "ALERT#i-1", "sk": "forever"})["Item"]
+    assert short[state.TTL_ATTRIBUTE] == int((T0 + timedelta(days=2)).timestamp())
+    assert state.TTL_ATTRIBUTE not in forever

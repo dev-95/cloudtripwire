@@ -335,7 +335,7 @@ One role per Lambda. All three get `logs:CreateLogStream`, `logs:PutLogEvents` o
   - `observe` mode never calls stop / update APIs (assert with moto state or a spy).
   - Kill switch: key deactivated, recent instance stopped, old instance untouched, one failing step doesn't stop the others.
   - Notify: message truncation, one channel failing doesn't block others, no secrets in output.
-- Target: full suite under 10 seconds.
+- Target: full suite under 15 seconds.
 - **Integration test (manual, test account only):** `scripts/seed_zombies.py` creates a 1 GB unattached gp3 volume, an unassociated EIP, and a t3.micro with `ttl=30m`. Deploy, run the Lambdas manually, confirm alerts, then `scripts/cleanup_seed.py`. NAT gateway testing is optional (it costs ~$1/day); delete it the same day.
 
 ---
@@ -456,7 +456,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - `aws login` sessions expire; Terraform then fails with "login session has expired". Run `aws login --profile tripwire-test` again.
   - `aws lambda invoke ... --log-type Tail` returns the last 4 KB of logs (base64 `LogResult`), enough to see `notify_sent` without waiting for CloudWatch.
   - Test suite now 202 tests, 10.6 s on this laptop (just over the 10 s budget). Biggest single cost is moto's first EC2 call (~1.5–2 s). Revisit if CI shows the same.
-  - TTL handler: one message per run (`⏰ CloudTripwire TTL: N updates`), lines ordered stopped → would stop → won't stop → warnings → unreadable; failures follow the sweep rule (always sent with the warning). Note this means a persistent failure (e.g. an SCP-denied region) alerts **every hour**; consider rate-limiting if it's noisy. Alert-once keys include the expiry/value, so a changed tag re-alerts. In enforce mode a stop is always alerted; a tagging or action-log failure after a successful stop is logged at ERROR in the `stopped` event but doesn't hide the stop.
+  - TTL handler: one message per run (`⏰ CloudTripwire TTL: N updates`), lines ordered stopped → would stop → won't stop → warnings → unreadable; failure warnings are deduped once per UTC day per (region, error code) via `should_alert(..., keep_for=2 days)` (markers `ALERT#<region>` / `ttl_check_failed#<code>#<date>`); every failure is still logged. `checks_failed` in the summary counts all, `failures_reported` the ones alerted. Alert-once keys include the expiry/value, so a changed tag re-alerts. In enforce mode a stop is always alerted; a tagging or action-log failure after a successful stop is logged at ERROR in the `stopped` event but doesn't hide the stop.
   - TTL tests: `ttl` fixture spies on `stop_instances`, `create_tags`, `stop_db_instance`, `add_tags_to_resource` (passing through to moto); the enforce test asserts the spy sees all four so `calls == []` in other tests is meaningful. Clock is set from the moto `LaunchTime`/`InstanceCreateTime`. moto supports Spot lifecycle, `aws:` tags on instances, Aurora members and read replicas.
   - `notify.fit_message(header, lines, footer)` is the shared under-4,000-chars truncation (digest + TTL). `tests/helpers.create_state_table()` builds the moto table.
   - ADR 0001 (stop-not-delete) from section 5 hasn't been written yet; 0002 exists.

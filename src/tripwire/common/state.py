@@ -147,16 +147,19 @@ def log_action(table, action: Action) -> None:
     )
 
 
-def should_alert(table, resource_id: str, alert_type: str, now: datetime) -> bool:
+def should_alert(
+    table, resource_id: str, alert_type: str, now: datetime, keep_for: timedelta | None = None
+) -> bool:
     """True the first time it's called for (resource_id, alert_type), False afterwards.
 
     Check and record are one conditional write, so two concurrent runs can't both alert.
+    keep_for sets the marker's DynamoDB TTL, for markers that are only useful briefly.
     """
+    item = {"pk": f"ALERT#{resource_id}", "sk": alert_type, "alerted_at": now.isoformat()}
+    if keep_for is not None:
+        item[TTL_ATTRIBUTE] = int((now + keep_for).timestamp())
     try:
-        table.put_item(
-            Item={"pk": f"ALERT#{resource_id}", "sk": alert_type, "alerted_at": now.isoformat()},
-            ConditionExpression="attribute_not_exists(pk)",
-        )
+        table.put_item(Item=item, ConditionExpression="attribute_not_exists(pk)")
     except ClientError as e:
         if _is_conditional_failure(e):
             return False

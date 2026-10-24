@@ -17,8 +17,9 @@ Helpers live in [`src/tripwire/common/state.py`](../src/tripwire/common/state.py
   only unique per region) and alert types `ttl_unreadable#<value>`,
   `ttl_warning#<expiry>`, `ttl_expired#<expiry>`. Including the value/expiry means a
   changed `ttl` tag alerts again; an unchanged one never repeats.
-- Alert markers have no `expires_at` yet, so they stay until deleted (a few small
-  items per tagged resource).
+- Failed-check warnings use `ALERT#<region>` / `ttl_check_failed#<error code>#<date>`
+  (once per UTC day) with `expires_at` 2 days out. Other markers have no
+  `expires_at`, so they stay until deleted (a few small items per tagged resource).
 
 - Timestamps are UTC ISO 8601 strings; costs are stored as `Decimal`.
 - `expires_at` (epoch seconds, 90 days after the action) is the table's **TTL

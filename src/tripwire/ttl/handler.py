@@ -15,6 +15,7 @@ from functools import cache
 from typing import Any, Literal
 
 import boto3
+from botocore.exceptions import ClientError
 
 from tripwire.common import notify, regions, state
 from tripwire.common.config import Config, load_config
@@ -34,6 +35,7 @@ logger.setLevel(logging.INFO)
 ASG_TAG = "aws:autoscaling:groupName"
 STOPPED_AT_TAG = "tripwire:stopped-at"
 MAX_TAG_VALUE_SHOWN = 40  # the ttl value is user input; keep it short in alerts
+FAILURE_MARKER_TTL = timedelta(days=2)  # daily failure markers clean themselves up
 
 
 @cache
@@ -262,26 +264,25 @@ def handle_resource(
 
 def run(
     region_names: list[str], config: Config, now: datetime, table
-) -> tuple[dict[str, list[str]], int, int]:
-    """Return (alert lines by outcome, resources checked, failed checks)."""
+) -> tuple[dict[str, list[str]], int, list[tuple[str, str]]]:
+    """Return (alert lines by outcome, resources checked, failures as (region, error code))."""
     lines: dict[str, list[str]] = {}
-    checked = failed = 0
+    checked = 0
+    failures: list[tuple[str, str]] = []
     for region in region_names:
         ec2, rds = _region_clients(region)
         for kind, lister, client in (("ec2", list_ec2, ec2), ("rds", list_rds, rds)):
             try:
                 resources = lister(client, region)
             except Exception as e:  # one broken region/service must not stop the run
-                failed += 1
-                _log_failure(region, kind, e)
+                failures.append((region, _log_failure(region, kind, e)))
                 continue
             for res in resources:
                 checked += 1
                 try:
                     result = handle_resource(res, config, now, table, ec2, rds)
                 except Exception as e:
-                    failed += 1
-                    _log_failure(region, res.resource_id, e)
+                    failures.append((region, _log_failure(region, res.resource_id, e)))
                     continue
                 if result:
                     outcome, line = result
@@ -289,22 +290,48 @@ def run(
                     logger.info(
                         json.dumps({"event": "ttl_alert", "outcome": outcome, "line": line})
                     )
-    return lines, checked, failed
+    return lines, checked, failures
 
 
-def _log_failure(region: str, target: str, error: Exception) -> None:
+def _error_code(error: Exception) -> str:
+    if isinstance(error, ClientError):
+        return error.response.get("Error", {}).get("Code") or "ClientError"
+    return type(error).__name__
+
+
+def _log_failure(region: str, target: str, error: Exception) -> str:
+    """Log one failed check and return its error code."""
+    code = _error_code(error)
     logger.error(
         json.dumps(
             {
                 "event": "check_failed",
                 "region": region,
                 "target": target,
-                "error": type(error).__name__,
+                "error": code,
                 # Only EC2/RDS/DynamoDB API errors reach here; no secrets in scope.
                 "message": str(error)[:500],
             }
         )
     )
+    return code
+
+
+def failures_to_report(failures: list[tuple[str, str]], table, now: datetime) -> int:
+    """Failed checks whose (region, error code) hasn't been reported today (UTC).
+
+    The TTL Lambda runs hourly; without this, a lasting failure (an SCP-denied region,
+    a missing permission) would send the same warning 24 times a day.
+    """
+    day = now.date().isoformat()
+    fresh = {
+        (region, code)
+        for region, code in sorted(set(failures))
+        if state.should_alert(
+            table, region, f"ttl_check_failed#{code}#{day}", now, keep_for=FAILURE_MARKER_TTL
+        )
+    }
+    return sum(1 for f in failures if f in fresh)
 
 
 ORDER = ("stopped", "would_stop", "not_stoppable", "warning", "unreadable")
@@ -339,9 +366,10 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     region_names = regions.enabled_regions(config.regions)
     table = _dynamodb().Table(config.state_table)
 
-    lines, checked, failed = run(region_names, config, now, table)
+    lines, checked, failures = run(region_names, config, now, table)
+    reported = failures_to_report(failures, table, now)
 
-    message = build_message(lines, config.mode, failed)
+    message = build_message(lines, config.mode, reported)
     if message:
         sent = notify.send(
             message,
@@ -356,7 +384,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "mode": config.mode,
         "regions_scanned": len(region_names),
         "resources_checked": checked,
-        "checks_failed": failed,
+        "checks_failed": len(failures),
+        "failures_reported": reported,
     }
     summary |= {outcome: len(lines.get(outcome, [])) for outcome in ORDER}
     summary["duration_s"] = round(time.monotonic() - started, 2)
