@@ -447,7 +447,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   3. ~~Demo GIF~~ Replaced by two real alert screenshots under "What it looks like" (`26cd8ac`). The digest screenshot shows the old sweep mode line ("Mode: observe (nothing was changed)"), from before `023d7e5`; fine since it's captioned as the first test deploy.
   4. Devesh tags `v0.1.0`; `release.yml` attaches `cloudtripwire-lambda-v0.1.0.zip` + `SHA256SUMS`. The README install uses `?ref=v0.1.0`, which only resolves after the tag exists.
   5. M3 demo: install from the README alone in a fresh account. Then launch posts.
-- **Test account cleanup (Devesh):** canary key `****RPKZ` (user `tripwire-canary`) is still Inactive; `i-04c5959ed7b6e0b41` is stopped (`cleanup_seed.py` terminates `tripwire-seed` instances). The account is on the AWS **Free plan** (until 2027-02-10), so GuardDuty can't be enabled.
+- **Test account:** on the AWS **Free plan** (until 2027-02-10), so GuardDuty can't be enabled. No seed or canary resources left: the canary key, user `tripwire-canary` and `i-04c5959ed7b6e0b41` were removed by Devesh on 2026-11-20.
 - **Known gaps:**
   - RDS stop path (`rds:StopDBInstance`, `rds:AddTagsToResource` with the IAM conditions) tested in moto only; a live test needs a db.t3.micro (costs money; approval).
   - No real `aws.health` / `aws.guardduty` event seen end to end. Forwarding was proven with a custom source; `aws.*` sources can't be sent by hand.
