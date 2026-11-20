@@ -445,14 +445,14 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - RDS stop path (`rds:StopDBInstance`, `rds:AddTagsToResource` with the IAM conditions) tested in moto only; a live test needs a db.t3.micro (costs money; approval).
   - No real `aws.health` / `aws.guardduty` event seen end to end. Forwarding was proven with a custom source; `aws.*` sources can't be sent by hand.
   - Crash alarms reach email only (SNS), not Telegram. Terraform warns when `alert_email` is empty.
-- **Live test record (test account ****4522****):**
+- **Live test record (test account `****4522****`):**
   - 2026-10-23 sweep: seeded 1 GB gp3 volume + EIP → digest on Telegram + email.
   - 2026-10-24 TTL: `i-0ed467fd560cf3759` (`ttl=30m`) warned, then stopped by the scheduled run (16:44Z), tagged, action logged; terminated after. Confirms the TTL IAM conditions for EC2.
   - 2026-11-20 kill switch (direct invoke, simulated Health event): instance `i-04c5959ed7b6e0b41` stopped + tagged `tripwire:quarantined=true`, canary access key set Inactive, 2 action items with undo commands, Telegram + email, 17 regions, 19.3 s. Confirms `GetAccessKeyLastUsed`, `UpdateAccessKey` and the stop/tag conditions.
   - 2026-11-20 forwarding: temporary rules (`cloudtripwire-fwdtest*`, source `cloudtripwire.test`) → us-east-1 to ca-central-1 default bus via the forwarder role; Lambda logged the original source within 15 s. Temporary rules + permission deleted (verified).
   - 2026-11-19 GuardDuty test blocked: `SubscriptionRequiredException` (Free plan). Nothing created.
 - **Notes:**
-  - **Working with the test deployment** (`deploy/test/main.tf`, gitignored): both providers (default ca-central-1 + `us_east_1` alias) have profile `tripwire-test` and `allowed_account_ids = ["****4522****"]`; `mode` + `killswitch_mode` `enforce`, channels telegram + email, `cli_profile = "tripwire-test"`. Simulated kill switch event: `deploy/test/health_event.json` (holds the real canary key ID; never commit).
+  - **Working with the test deployment** (`deploy/test/main.tf`, gitignored): both providers (default ca-central-1 + `us_east_1` alias) have profile `tripwire-test` and `allowed_account_ids` set to the test account (`****4522****`; masked here, the real ID is only in that gitignored file and `scripts/seed_zombies.py`). Before any approved apply, compare `aws sts get-caller-identity --profile tripwire-test` with that `allowed_account_ids` value; `mode` + `killswitch_mode` `enforce`, channels telegram + email, `cli_profile = "tripwire-test"`. Simulated kill switch event: `deploy/test/health_event.json` (holds the real canary key ID; never commit).
     - Plan/apply: `terraform -chdir=deploy/test plan "-out=reviewed.tfplan"` (quote `-out=` in PowerShell 5.1), then `apply reviewed.tfplan`. All three Lambdas share one zip of `src/`, so any `src/` change shows as 3 in-place `source_code_hash` changes.
     - `aws login` sessions expire ("login session has expired"): `aws login --profile tripwire-test`. boto3 scripts need `botocore[crt]` for these credentials (in `requirements-dev.txt`).
     - Sync `aws lambda invoke`: `--cli-read-timeout 310` and `AWS_MAX_ATTEMPTS=1`, or a run over 60 s is retried (double invoke). `--log-type Tail` returns the last 4 KB of logs; CloudWatch lags ~30 s.
