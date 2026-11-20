@@ -400,7 +400,7 @@ Each milestone ends with tests passing and something demoable.
 ### M3 — Launch (week 3)
 - [ ] ~~CloudFormation template mirroring the module~~ moved to v0.2 (decided 2026-11-19: v0.1.0 is Terraform-only)
 - [x] `docs/` complete: architecture, permissions, detectors, ttl, killswitch, ADRs 0001 + 0002 (2026-11-20)
-- [x] README: pitch, 2-minute install, config table, safety, cost, testing, FAQ, uninstall, lessons learned (2026-11-20). Demo GIF still a placeholder.
+- [x] README: pitch, 2-minute install, config table, safety, cost, testing, FAQ, uninstall, lessons learned (2026-11-20). Alert screenshots (`docs/images/`) replace the demo GIF (2026-11-20).
 - [ ] Release workflow + `v0.1.0` tag (workflow written 2026-11-20; tag not created)
 - [ ] Launch posts: r/AWSCertifications, r/aws, LinkedIn, dev.to write-up
 - **Demo:** a stranger can install from the README without help.
@@ -438,13 +438,13 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 ## 15. Status
 
-- **Current milestone:** M3 (launch). M1 complete 2026-10-24, M2 complete 2026-11-20 (Slack moved to v0.2). M3 done: docs, README, `release.yml`. Left: demo GIF, price re-check, push + CI, `v0.1.0` tag, fresh install test, launch posts.
+- **Current milestone:** M3 (launch). M1 complete 2026-10-24, M2 complete 2026-11-20 (Slack moved to v0.2). M3 done: docs, README, `release.yml`. Left: push + CI, `v0.1.0` tag, fresh install test, launch posts.
 - **Last session:** 2026-11-19/20. Kill switch built (parser, handler, Terraform), deployed and demoed; forwarding proven; user guardrails, ADR 0001; notify timeout 15 s; launch docs + README + release workflow.
 - **Deployed (test account, ca-central-1 + us-east-1 forward rules):** all three Lambdas run `main` as of `c25e020` (`CodeSha256` `zNVQrHlx...`, applied 2026-11-20); `mode` and `killswitch_mode` are `enforce`.
 - **Next steps:**
   1. Devesh: push, and check CI is green. First runs of: module validated via `examples/basic` only (it can't validate standalone, it needs the `aws.us_east_1` alias), `release.yml` (runs on tags only), new `test_check_iam` test.
   2. ~~Re-verify `pricing.py`~~ Done 2026-11-20: all 15 prices unchanged (comment-only edit to `pricing.py`), deployed.
-  3. Record the demo GIF (`docs/demo.gif`) and replace the README placeholder.
+  3. ~~Demo GIF~~ Replaced by two real alert screenshots under "What it looks like" (`26cd8ac`). The digest screenshot shows the old sweep mode line ("Mode: observe (nothing was changed)"), from before `023d7e5`; fine since it's captioned as the first test deploy.
   4. Devesh tags `v0.1.0`; `release.yml` attaches `cloudtripwire-lambda-v0.1.0.zip` + `SHA256SUMS`. The README install uses `?ref=v0.1.0`, which only resolves after the tag exists.
   5. M3 demo: install from the README alone in a fresh account. Then launch posts.
 - **Test account cleanup (Devesh):** canary key `****RPKZ` (user `tripwire-canary`) is still Inactive; `i-04c5959ed7b6e0b41` is stopped (`cleanup_seed.py` terminates `tripwire-seed` instances). The account is on the AWS **Free plan** (until 2027-02-10), so GuardDuty can't be enabled.
