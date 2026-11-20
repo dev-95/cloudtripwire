@@ -12,17 +12,22 @@ Default: creates, in ca-central-1, each tagged tripwire-seed=true:
   it exists). The TTL Lambda should flag it 30 minutes after launch.
 Remove everything with: python scripts/cleanup_seed.py
 
-Refuses to run unless profile tripwire-test resolves to the test account.
+Refuses to run unless profile tripwire-test resolves to the test account, whose ID
+must be in the TRIPWIRE_TEST_ACCOUNT_ID environment variable (kept out of the repo):
+  PowerShell:  $env:TRIPWIRE_TEST_ACCOUNT_ID = "<12-digit test account ID>"
+  bash:        export TRIPWIRE_TEST_ACCOUNT_ID=<12-digit test account ID>
 Skips anything that already exists, so running it twice creates nothing new.
 """
 
 import argparse
+import os
+import re
 import sys
 
 import boto3
 
 PROFILE = "tripwire-test"
-TEST_ACCOUNT_ID = "****4522****"
+ACCOUNT_ENV = "TRIPWIRE_TEST_ACCOUNT_ID"
 REGION = "ca-central-1"
 SEED_TAG = {"Key": "tripwire-seed", "Value": "true"}
 SEED_FILTER = [{"Name": "tag:tripwire-seed", "Values": ["true"]}]
@@ -37,15 +42,27 @@ class WrongAccountError(RuntimeError):
     pass
 
 
+def expected_account_id() -> str:
+    """The test account ID from TRIPWIRE_TEST_ACCOUNT_ID, or raise (no default, ever)."""
+    value = os.environ.get(ACCOUNT_ENV, "").strip()
+    if not re.fullmatch(r"\d{12}", value):
+        raise WrongAccountError(
+            f"set {ACCOUNT_ENV} to the 12-digit test account ID"
+            f" ({'not set' if not value else 'not 12 digits'})"
+        )
+    return value
+
+
 def get_test_session(profile: str = PROFILE) -> boto3.Session:
     """Session for the test account, or raise. The only way these scripts get AWS access."""
     if profile != PROFILE:
         raise WrongAccountError(f"refusing profile {profile!r}; only {PROFILE!r} is allowed")
+    expected = expected_account_id()  # before any AWS call
     session = boto3.Session(profile_name=profile, region_name=REGION)
     account = session.client("sts").get_caller_identity()["Account"]
-    if account != TEST_ACCOUNT_ID:
+    if account != expected:
         raise WrongAccountError(
-            f"profile {profile!r} is account {account}, not the test account {TEST_ACCOUNT_ID}"
+            f"profile {profile!r} is account {account}, not the test account in {ACCOUNT_ENV}"
         )
     return session
 

@@ -10,11 +10,16 @@ import cleanup_seed  # noqa: E402
 import seed_zombies  # noqa: E402
 
 REGION = seed_zombies.REGION
+TEST_ACCOUNT = "111122223333"  # fake; the real ID only lives in the maintainer's env
 
 
 @pytest.fixture
 def test_profile(aws, monkeypatch, tmp_path):
-    """A fake tripwire-test profile; moto answers as the given account."""
+    """A fake tripwire-test profile; moto answers as the given account.
+
+    TRIPWIRE_TEST_ACCOUNT_ID is set to TEST_ACCOUNT, so as_account(TEST_ACCOUNT) passes.
+    """
+    monkeypatch.setenv(seed_zombies.ACCOUNT_ENV, TEST_ACCOUNT)
     config = tmp_path / "config"
     config.write_text(
         "[profile tripwire-test]\n"
@@ -37,7 +42,7 @@ def test_profile(aws, monkeypatch, tmp_path):
 
 
 def test_guard_accepts_test_account(test_profile):
-    session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
+    session = test_profile(TEST_ACCOUNT)()
     assert session.region_name == REGION
 
 
@@ -47,8 +52,32 @@ def test_guard_refuses_other_account(test_profile):
         get_session()
 
 
+@pytest.mark.parametrize(
+    ("value", "why"), [(None, "not set"), ("", "not set"), ("12345", "not 12 digits")]
+)
+def test_guard_refuses_without_a_valid_account_env_before_any_aws_call(
+    test_profile, monkeypatch, value, why
+):
+    get_session = test_profile(TEST_ACCOUNT)
+    if value is None:
+        monkeypatch.delenv(seed_zombies.ACCOUNT_ENV)
+    else:
+        monkeypatch.setenv(seed_zombies.ACCOUNT_ENV, value)
+    monkeypatch.setattr(seed_zombies.boto3, "Session", lambda **kw: pytest.fail("no AWS call"))
+    with pytest.raises(seed_zombies.WrongAccountError, match=why):
+        get_session()
+
+
+def test_main_refuses_without_account_env(test_profile, monkeypatch, capsys):
+    test_profile(TEST_ACCOUNT)
+    monkeypatch.delenv(seed_zombies.ACCOUNT_ENV)
+    monkeypatch.setattr(seed_zombies, "seed", lambda s: pytest.fail("seed must not run"))
+    assert seed_zombies.main([]) == 2
+    assert f"set {seed_zombies.ACCOUNT_ENV}" in capsys.readouterr().out
+
+
 def test_guard_refuses_other_profile(test_profile):
-    get_session = test_profile(seed_zombies.TEST_ACCOUNT_ID)
+    get_session = test_profile(TEST_ACCOUNT)
     with pytest.raises(seed_zombies.WrongAccountError, match="only 'tripwire-test'"):
         get_session("default")
 
@@ -76,7 +105,7 @@ def test_main_refuses_wrong_account_without_touching_ec2(test_profile, monkeypat
 
 
 def test_ttl_flag_seeds_only_the_instance(test_profile, monkeypatch):
-    test_profile(seed_zombies.TEST_ACCOUNT_ID)
+    test_profile(TEST_ACCOUNT)
     called = []
     monkeypatch.setattr(seed_zombies, "seed", lambda s: called.append("seed"))
     monkeypatch.setattr(seed_zombies, "seed_ttl_instance", lambda s: called.append("ttl"))
@@ -90,7 +119,7 @@ def test_ttl_flag_seeds_only_the_instance(test_profile, monkeypatch):
 
 
 def test_seed_creates_tagged_volume_and_eip_once(test_profile):
-    session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
+    session = test_profile(TEST_ACCOUNT)()
     ec2 = session.client("ec2", region_name=REGION)
 
     created = seed_zombies.seed(session)
@@ -107,7 +136,7 @@ def test_seed_creates_tagged_volume_and_eip_once(test_profile):
 
 
 def test_cleanup_removes_only_seed_resources(test_profile):
-    session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
+    session = test_profile(TEST_ACCOUNT)()
     ec2 = session.client("ec2", region_name=REGION)
     seed_zombies.seed(session)
     keep_vol = ec2.create_volume(AvailabilityZone=f"{REGION}a", Size=1)["VolumeId"]
@@ -130,7 +159,7 @@ def instance(ec2, iid: str) -> dict:
 
 
 def test_seed_ttl_instance_launches_tagged_t3_micro_once(test_profile):
-    session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
+    session = test_profile(TEST_ACCOUNT)()
     ec2 = session.client("ec2", region_name=REGION)
     ssm = session.client("ssm", region_name=REGION)
     ami = ssm.get_parameter(Name=seed_zombies.AMI_PARAMETER)["Parameter"]["Value"]
@@ -149,7 +178,7 @@ def test_seed_ttl_instance_launches_tagged_t3_micro_once(test_profile):
 
 
 def test_seed_ttl_instance_again_after_termination(test_profile):
-    session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
+    session = test_profile(TEST_ACCOUNT)()
     ec2 = session.client("ec2", region_name=REGION)
     first = seed_zombies.seed_ttl_instance(session)
     ec2.terminate_instances(InstanceIds=[first])
@@ -160,7 +189,7 @@ def test_seed_ttl_instance_again_after_termination(test_profile):
 
 
 def test_cleanup_terminates_only_seed_instances(test_profile):
-    session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
+    session = test_profile(TEST_ACCOUNT)()
     ec2 = session.client("ec2", region_name=REGION)
     seed_iid = seed_zombies.seed_ttl_instance(session)
     keep_tagged = launch_instance(ec2, TagSpecifications=tag("tripwire-seed", "no", "instance"))
@@ -176,6 +205,6 @@ def test_cleanup_terminates_only_seed_instances(test_profile):
 
 
 def test_cleanup_with_nothing_seeded(test_profile):
-    session = test_profile(seed_zombies.TEST_ACCOUNT_ID)()
+    session = test_profile(TEST_ACCOUNT)()
 
     assert cleanup_seed.cleanup(session) == {"instances": [], "volumes": [], "addresses": []}
