@@ -30,11 +30,16 @@ GuardDuty finding (us-east-1)  ──────────┤ forward rules �
   the home rules match the events directly.
 - The Lambda, state table, SNS topic and SSM parameters all live in the home region,
   so the kill switch needs no cross-region calls except stopping instances.
-- To verify after deploying: GuardDuty sample findings (`create-sample-findings` in
-  us-east-1) travel the same forwarding path. Health events can't be sent by hand
-  (`aws.*` sources are reserved).
-- Fallback if forwarding doesn't work: a second copy of the Lambda in us-east-1 that
-  sends its DynamoDB/SNS/SSM calls to the home region.
+- **Verified 2026-11-20** in the test account (home ca-central-1): a temporary
+  us-east-1 rule using the forwarder role sent a `put-events` event (source
+  `cloudtripwire.test`) to the ca-central-1 default bus. A rule there matching that
+  source invoked the Lambda within 15 s, and the Lambda logged the original
+  `source`. So a default bus in another region works as a target, and the event's
+  `source` survives forwarding. Not tested end to end: a real `aws.health` /
+  `aws.guardduty` event (`aws.*` sources can't be sent by hand, and GuardDuty isn't
+  available on the account's Free plan).
+- Fallback if forwarding ever stops working: a second copy of the Lambda in us-east-1
+  that sends its DynamoDB/SNS/SSM calls to the home region.
 
 ## State table
 

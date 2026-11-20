@@ -143,7 +143,7 @@ def test_send_telegram_and_email(channels, monkeypatch):
 
     assert result == {"telegram": True, "email": True}
     [(req, timeout)] = sent
-    assert timeout == 10
+    assert timeout == 15  # literal on purpose: a live send took ~10 s, keep the headroom
     assert req.get_method() == "POST"
     assert req.full_url == f"https://api.telegram.org/bot{FAKE_TOKEN}/sendMessage"
     assert json.loads(req.data) == {"chat_id": FAKE_CHAT, "text": "hello\nworld"}  # no parse_mode

@@ -21,6 +21,12 @@ Details, cost formulas and suggested fixes: [docs/detectors.md](docs/detectors.m
 
 ## FAQ
 
+**Does the kill switch work on the AWS Free plan?**
+Yes, for leaked keys: AWS Health reports exposed access keys on every account, and the
+kill switch reacts to that. The second trigger, GuardDuty findings (crypto mining,
+credential exfiltration), needs GuardDuty enabled. GuardDuty isn't available on the
+Free account plan and costs money after its 30-day trial on a paid plan.
+
 **Will GuardDuty sample findings trigger the kill switch?**
 No. Sample findings (from "Generate sample findings" or `aws guardduty create-sample-findings`)
 only send a "sample finding received, no action taken" alert. They never deactivate a key

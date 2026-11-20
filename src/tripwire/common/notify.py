@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 logging.getLogger("botocore").setLevel(logging.INFO)
 
 MAX_CHARS = 4000  # Telegram allows 4096; keep a margin
-TIMEOUT_SECONDS = 10
+TIMEOUT_SECONDS = 15  # a live kill switch send took ~10 s (2026-11-20); 10 s was too tight
 SNS_SUBJECT_MAX = 100
 DIGEST_MODE_LINE = "Mode: report only (the sweep never changes anything)"
 

@@ -69,6 +69,12 @@ Sources:
 
 ### GuardDuty findings
 
+**Needs GuardDuty enabled** (a paid service after its 30-day trial). GuardDuty isn't
+available on the AWS **Free account plan**: `create-detector` fails with
+`SubscriptionRequiredException` (seen 2026-11-20 in a Free plan account; check yours
+with `aws freetier get-account-plan-state`). Without GuardDuty this trigger never
+fires. The AWS Health trigger above needs nothing enabled and works on any plan.
+
 Envelope: `source = aws.guardduty`, `detail-type = GuardDuty Finding`, `detail` is the
 finding. Handled types: prefix `CryptoCurrency:EC2/` and
 `UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration` (`.InsideAWS`, `.OutsideAWS`).
