@@ -1,6 +1,40 @@
 # architecture
 
-TODO
+Everything runs in one AWS account, in the region you deploy to (the home region),
+plus two forwarding rules in us-east-1. Detail on the Lambdas: CLAUDE.md section 4.
+
+| Lambda | Trigger | Reads | Writes |
+|---|---|---|---|
+| `cloudtripwire-sweep` | daily schedule | EC2, ELBv2, CloudWatch in every enabled region | state table (findings), alerts |
+| `cloudtripwire-ttl` | hourly schedule | EC2, RDS in every enabled region | stops expired EC2/RDS (enforce), action log, alerts |
+| `cloudtripwire-killswitch` | Health / GuardDuty events | EC2 in every enabled region, IAM | deactivates the key, stops new instances (enforce), action log, alerts |
+
+## Kill switch event routing
+
+```
+us-east-1                                       home region (e.g. ca-central-1)
+AWS Health AWS_RISK_CREDENTIALS_EXPOSED ─┐
+GuardDuty finding (us-east-1)  ──────────┤ forward rules ──► default bus ──► killswitch rules ──► Lambda
+                                         │ (role: events:PutEvents)            ▲
+                                                 GuardDuty finding (home) ─────┘
+```
+
+- AWS Health sends global events, including exposed access keys, to **us-east-1
+  only** (Health User Guide, "Choosing a Region": "To receive global events, you must
+  create a rule for the US East (N. Virginia) Region").
+- The module takes an `aws.us_east_1` provider and creates two rules there (Health,
+  GuardDuty) that target the home region's default event bus
+  (EventBridge User Guide, cross-Region event routing). The rules on the home bus use
+  the same patterns and invoke the Lambda.
+- If the home region is us-east-1, the forwarding rules and role aren't created;
+  the home rules match the events directly.
+- The Lambda, state table, SNS topic and SSM parameters all live in the home region,
+  so the kill switch needs no cross-region calls except stopping instances.
+- To verify after deploying: GuardDuty sample findings (`create-sample-findings` in
+  us-east-1) travel the same forwarding path. Health events can't be sent by hand
+  (`aws.*` sources are reserved).
+- Fallback if forwarding doesn't work: a second copy of the Lambda in us-east-1 that
+  sends its DynamoDB/SNS/SSM calls to the home region.
 
 ## State table
 

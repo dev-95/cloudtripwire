@@ -94,3 +94,44 @@ resource "aws_lambda_function" "ttl" {
     }
   }
 }
+
+resource "aws_cloudwatch_log_group" "killswitch" {
+  name              = "/aws/lambda/${local.name}-killswitch"
+  retention_in_days = 30
+  tags              = var.tags
+}
+
+resource "aws_lambda_function" "killswitch" {
+  function_name    = "${local.name}-killswitch"
+  description      = "CloudTripwire leaked-key kill switch"
+  role             = aws_iam_role.killswitch.arn
+  runtime          = "python3.12"
+  handler          = "tripwire.killswitch.handler.handler"
+  filename         = data.archive_file.lambda.output_path
+  source_code_hash = data.archive_file.lambda.output_base64sha256
+  timeout          = 300
+  memory_size      = 256
+
+  environment {
+    variables = {
+      KILLSWITCH_MODE             = var.killswitch_mode
+      KILLSWITCH_LOOKBACK_MINUTES = tostring(var.killswitch_lookback_minutes)
+      REGIONS                     = join(",", var.regions)
+      CHANNELS                    = join(",", var.channels)
+      ALERT_EMAIL                 = var.alert_email
+      STATE_TABLE                 = aws_dynamodb_table.state.name
+      ALERT_TOPIC_ARN             = aws_sns_topic.alerts.arn
+    }
+  }
+
+  tags = var.tags
+
+  depends_on = [aws_cloudwatch_log_group.killswitch, aws_iam_role_policy.killswitch]
+
+  lifecycle {
+    precondition {
+      condition     = !contains(var.channels, "email") || var.alert_email != ""
+      error_message = "alert_email is required when channels includes \"email\"."
+    }
+  }
+}

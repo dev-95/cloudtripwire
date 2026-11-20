@@ -6,6 +6,9 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 6.0"
+      # us-east-1 receives AWS Health global events (exposed keys); the kill switch
+      # forwards them from there. Pass it even when you deploy in us-east-1.
+      configuration_aliases = [aws.us_east_1]
     }
     archive = {
       source  = "hashicorp/archive"

@@ -23,8 +23,18 @@ provider "aws" {
   region = var.region
 }
 
+# AWS Health sends exposed-key events to us-east-1; the kill switch listens there.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 module "cloudtripwire" {
   source = "../.."
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   mode     = "observe"
   channels = ["telegram"]

@@ -50,8 +50,8 @@ Rules for every role:
   move the parameters to a customer managed key, grant `kms:Decrypt` on that
   key with `kms:ViaService = ssm.<region>.amazonaws.com`.
 - `dynamodb:PutItem` / `GetItem` / `DeleteItem`: the sweep doesn't use them
-  (the TTL and kill switch Lambdas will get `PutItem` for the action log and
-  alert markers).
+  (the TTL and kill switch Lambdas have `PutItem` for the action log and alert
+  markers).
 
 ## TTL Lambda (`cloudtripwire-ttl`)
 
@@ -100,12 +100,55 @@ How the conditions work (`terraform/iam.tf`):
 | `dynamodb:PutItem` | the `cloudtripwire-state` table | Action log and alert-once markers (`state.log_action`, `state.should_alert`). The only DynamoDB call it makes. |
 | `sns:Publish` | the `cloudtripwire-alerts` topic | Email alerts |
 
+## Kill switch Lambda (`cloudtripwire-killswitch`)
+
+### Read-only discovery (`Resource: "*"`)
+
+| Action | Why |
+|---|---|
+| `ec2:DescribeRegions` | List the regions enabled in the account |
+| `ec2:DescribeInstances` | Instances launched within `killswitch_lookback_minutes`, their tags, Spot/ASG status |
+
+### Writes (enforce mode only)
+
+| Action | Resource | Conditions | Why |
+|---|---|---|---|
+| `iam:GetAccessKeyLastUsed` | `arn:aws:iam::<account>:user/*` | | Find which user owns the leaked key. AWS Health events only carry the key ID. Read-only, but scoped to users anyway. |
+| `iam:UpdateAccessKey` | `arn:aws:iam::<account>:user/*` | | Set the leaked key `Inactive` (undo: `--status Active`). Never `iam:DeleteAccessKey`. |
+| `ec2:StopInstances` | `arn:aws:ec2:*:<account>:instance/*` | not tagged `tripwire=ignore` | Stop instances launched in the lookback window (any region) |
+| `ec2:CreateTags` | same | not tagged `tripwire=ignore`; may only set `tripwire:quarantined` | Mark what the kill switch stopped |
+
+The conditions work exactly as for the TTL role (above).
+Not needed: `iam:ListAccessKeys` (it needs the user name, which Health events don't
+give; `GetAccessKeyLastUsed` returns it). Approved 2026-11-19.
+
+### Scoped to CloudTripwire's own resources
+
+| Action | Resource | Why |
+|---|---|---|
+| `logs:CreateLogStream`, `logs:PutLogEvents` | `/aws/lambda/cloudtripwire-killswitch` log group | Its own logs |
+| `ssm:GetParameter` | exactly `parameter/cloudtripwire/telegram_bot_token` and `.../telegram_chat_id` | Telegram token and chat id |
+| `dynamodb:PutItem` | the `cloudtripwire-state` table | Action log with undo commands (`state.log_action`) |
+| `sns:Publish` | the `cloudtripwire-alerts` topic | Email alerts |
+
+## Kill switch forwarder role (`cloudtripwire-killswitch-forward`)
+
+Only created when you deploy outside us-east-1. Assumed by EventBridge
+(`events.amazonaws.com`, condition `aws:SourceAccount` = your account) for the two
+us-east-1 forwarding rules.
+
+| Action | Resource | Why |
+|---|---|---|
+| `events:PutEvents` | the default event bus in your home region | Forward AWS Health exposed-key events (which AWS sends to us-east-1 only) and us-east-1 GuardDuty findings to the kill switch |
+
 ## Other resources
 
 - **CloudWatch alarms** `cloudtripwire-sweep-errors` and `cloudtripwire-ttl-errors`
   publish to the alerts topic if that Lambda errors or times out (at most once a
-  day each). This uses the topic's default access policy (same account); no extra
-  IAM.
-- **EventBridge rules** `cloudtripwire-sweep` and `cloudtripwire-ttl` invoke their
-  Lambda through a resource-based permission (`lambda:InvokeFunction` for
+  day each). `cloudtripwire-killswitch-errors` uses a 5-minute period, because a
+  kill switch crash needs attention right away. This uses the topic's default
+  access policy (same account); no extra IAM.
+- **EventBridge rules** `cloudtripwire-sweep`, `cloudtripwire-ttl`,
+  `cloudtripwire-killswitch-health` and `cloudtripwire-killswitch-guardduty` invoke
+  their Lambda through a resource-based permission (`lambda:InvokeFunction` for
   `events.amazonaws.com`, limited to that rule's ARN).

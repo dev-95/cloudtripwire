@@ -8,6 +8,11 @@ output "ttl_function_name" {
   value       = aws_lambda_function.ttl.function_name
 }
 
+output "killswitch_function_name" {
+  description = "Kill switch Lambda name. Test it in observe mode with a sample event (docs/killswitch.md)."
+  value       = aws_lambda_function.killswitch.function_name
+}
+
 output "state_table_name" {
   description = "DynamoDB table holding findings, the action log and alert markers."
   value       = aws_dynamodb_table.state.name

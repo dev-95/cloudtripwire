@@ -37,8 +37,8 @@ jobs:
           terraform_wrapper: false
       - run: terraform fmt -check -recursive
         working-directory: terraform
-      - run: terraform init -backend=false -input=false && terraform validate
-        working-directory: terraform
+      # The module needs an aws.us_east_1 provider from its caller, so it can't be
+      # validated on its own; validating examples/basic checks the whole module.
       - run: terraform init -backend=false -input=false && terraform validate
         working-directory: terraform/examples/basic
 
