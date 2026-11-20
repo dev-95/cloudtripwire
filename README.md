@@ -26,6 +26,10 @@ These are real alerts from my test account:
 
 <img src="docs/images/killswitch-alert.png" alt="Telegram kill switch alert with undo commands" width="400">
 
+<img src="docs/images/killswitch-email.jpg" alt="The same kill switch alert delivered by email" width="600">
+
+*The same alert by email*
+
 ## How it works
 
 ```mermaid
