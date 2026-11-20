@@ -377,7 +377,7 @@ Each milestone ends with tests passing and something demoable.
 - [x] `notify` for Telegram + email, with tests
 - [x] Sweep handler + digest formatting
 - [x] Terraform module: DynamoDB, SNS, sweep Lambda, IAM, schedule; `examples/basic` (deployed to the test account 2026-10-23)
-- [x] CI workflow green (run #3, commit `4a64a35`)
+- [x] CI workflow green (run #3, commit `82c0ced`)
 - **Demo:** seeded zombies in test account → Telegram digest arrives. **Passed 2026-10-23.**
 
 ### M2 — TTL + kill switch (week 2)
@@ -431,14 +431,15 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 ## 15. Status
 
-- **Current milestone:** M3 (launch). M1 complete 2026-10-24, M2 complete 2026-11-20 (Slack moved to v0.2). M3 done: docs, README, `release.yml`. Left: push + CI, `v0.1.0` tag, fresh install test, launch posts.
+- **Current milestone:** M3 (launch). M1 complete 2026-10-24, M2 complete 2026-11-20 (Slack moved to v0.2). M3 done: docs, README, `release.yml`; `v0.1.0` tagged and released by the maintainer (release published 2026-11-20 04:32Z, assets `cloudtripwire-lambda-v0.1.0.zip` + `SHA256SUMS`). Left: force-push the rewritten history (below), fresh install test, launch posts.
+- **History rewritten 2026-11-20** (`git filter-repo --replace-text`) to replace the test account ID with `****4522****` in every commit (it had been public since 2026-10-23). 58 commits kept, current files unchanged, no object contains the ID. Every commit from `bd168c7` (2026-10-23) on has a new SHA; SHAs quoted in this file were remapped. `v0.1.0` moved from `e6856b8` to the rewritten commit (differs only by the mask in `CLAUDE.md` and `scripts/seed_zombies.py`). Backup bundle of the old history: in the session scratchpad, not in the repo. **Publishing it is the maintainer's step:** `git push --force-with-lease origin main` and `git push --force origin v0.1.0`. GitHub can keep old commits reachable by SHA until it garbage-collects; a full purge needs a GitHub Support request.
 - **Last session:** 2026-11-19/20. Kill switch built (parser, handler, Terraform), deployed and demoed; forwarding proven; user guardrails, ADR 0001; notify timeout 15 s; launch docs + README + release workflow.
-- **Deployed (test account, ca-central-1 + us-east-1 forward rules):** all three Lambdas run `main` as of `c25e020` (`CodeSha256` `zNVQrHlx...`, applied 2026-11-20); `mode` and `killswitch_mode` are `enforce`.
+- **Deployed (test account, ca-central-1 + us-east-1 forward rules):** all three Lambdas run `main` as of `1e97046` (`CodeSha256` `zNVQrHlx...`, applied 2026-11-20); `mode` and `killswitch_mode` are `enforce`.
 - **Next steps:**
-  1. The maintainer pushes; check CI is green. First runs of: module validated via `examples/basic` only (it can't validate standalone, it needs the `aws.us_east_1` alias), `release.yml` (runs on tags only), new `test_check_iam` test.
+  1. The maintainer force-pushes the rewritten `main` and `v0.1.0` (see History rewritten), then checks CI is green. First runs of: module validated via `examples/basic` only (it can't validate standalone, it needs the `aws.us_east_1` alias), `release.yml` (runs on tags only), new `test_check_iam` test.
   2. ~~Re-verify `pricing.py`~~ Done 2026-11-20: all 15 prices unchanged (comment-only edit to `pricing.py`), deployed.
-  3. ~~Demo GIF~~ Replaced by two real alert screenshots under "What it looks like" (`26cd8ac`). The digest screenshot shows the old sweep mode line ("Mode: observe (nothing was changed)"), from before `023d7e5`; fine since it's captioned as the first test deploy.
-  4. The maintainer tags `v0.1.0`; `release.yml` attaches `cloudtripwire-lambda-v0.1.0.zip` + `SHA256SUMS`. The README install uses `?ref=v0.1.0`, which only resolves after the tag exists.
+  3. ~~Demo GIF~~ Replaced by two real alert screenshots under "What it looks like" (`9a953c9`). The digest screenshot shows the old sweep mode line ("Mode: observe (nothing was changed)"), from before `11a657f`; fine since it's captioned as the first test deploy.
+  4. ~~Tag `v0.1.0`~~ Done by the maintainer; release published 2026-11-20 with the zip + `SHA256SUMS`. After the tag force-push, check the release still shows the assets and the README's `?ref=v0.1.0` resolves.
   5. M3 demo: install from the README alone in a fresh account. Then launch posts.
 - **Test account:** on the AWS **Free plan** (until 2027-02-10), so GuardDuty can't be enabled. No seed or canary resources left: the canary key, user `tripwire-canary` and `i-04c5959ed7b6e0b41` were removed by the maintainer on 2026-11-20.
 - **Known gaps:**
@@ -490,7 +491,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - `describe_addresses` has no paginator (single call returns all).
   - Fix commands chained with `&&` don't run in Windows PowerShell 5.1; noted in `docs/detectors.md`.
   - `get_client` cache lives for the warm Lambda container (not one invocation); tests call `get_client.cache_clear()`.
-  - CI (`ci.yml`) first went green on GitHub at run #3 (commit `4a64a35`). Pins (checked 2026-10-23): checkout v7.0.1, setup-python v7.0.0 (skipped v7.1.0, released the day before), setup-terraform v4.0.1, gitleaks 8.30.1 binary with SHA-256 verified in the job. Terraform job tests 1.5.x (the floor in `versions.tf`) and latest 1.x.
+  - CI (`ci.yml`) first went green on GitHub at run #3 (commit `82c0ced`). Pins (checked 2026-10-23): checkout v7.0.1, setup-python v7.0.0 (skipped v7.1.0, released the day before), setup-terraform v4.0.1, gitleaks 8.30.1 binary with SHA-256 verified in the job. Terraform job tests 1.5.x (the floor in `versions.tf`) and latest 1.x.
   - `scripts/check_iam.py` is stricter than section 10's grep: it rejects any `*` in an action (e.g. `ec2:Describe*` too), Delete/Terminate/Release (case-insensitive), and fails if a file has no actions (parser miss). Reads HCL `actions`/`not_actions` and JSON/jsonencode `Action`/`NotAction`. Add `cloudformation/cloudtripwire.yaml` to its args when that exists.
 - **Open decisions:** none. (2026-11-19: v0.1.0 is Terraform-only; CloudFormation one-click and Slack move to v0.2.)
 - **Blockers:** none
