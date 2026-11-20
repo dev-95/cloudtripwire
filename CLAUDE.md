@@ -353,7 +353,7 @@ A failing test blocks everything after it.
 
 `release.yml` on tag `v*`: zip each Lambda package, attach zips + `cloudformation/cloudtripwire.yaml` to the GitHub release.
 
-CloudFormation one-click link (README): `https://console.aws.amazon.com/cloudformation/home#/stacks/create/review?templateURL=<public S3 URL of the template>&stackName=cloudtripwire`. Hosting the template publicly requires a public S3 bucket owned by Devesh. **OPEN DECISION:** set this up at v0.2 launch, or ship Terraform-only first.
+CloudFormation one-click link (README): `https://console.aws.amazon.com/cloudformation/home#/stacks/create/review?templateURL=<public S3 URL of the template>&stackName=cloudtripwire`. Hosting the template publicly requires a public S3 bucket owned by Devesh. **Decided 2026-11-19:** v0.1.0 ships Terraform-only; the CloudFormation template and one-click link move to v0.2.
 
 ---
 
@@ -391,13 +391,13 @@ Each milestone ends with tests passing and something demoable.
 - [x] TTL handler (observe + enforce), warnings, lab mode; deployed and verified on real AWS 2026-10-24 (EC2 stop path)
 - [ ] Kill switch handler + fixtures + tests
 - [ ] Terraform: ttl + killswitch Lambdas, IAM, EventBridge rules (us-east-1 for Health events) (ttl done and applied 2026-10-24; killswitch to do)
-- [ ] Slack channel
+- [ ] ~~Slack channel~~ moved to v0.2 (decided 2026-11-19; config already rejects `slack`)
 - [ ] Guardrails: pre-commit snippet + GitHub Action for users
-- [ ] IAM destructive-action check in CI
+- [x] IAM destructive-action check in CI (`scripts/check_iam.py` + `iam-guard` job in `ci.yml`, tests in `tests/unit/test_check_iam.py`)
 - **Demo:** t3.micro with `ttl=30m` gets stopped in enforce mode (**passed 2026-10-24**); simulated Health event deactivates a test key.
 
 ### M3 — Launch (week 3)
-- [ ] CloudFormation template mirroring the module (if decided)
+- [ ] ~~CloudFormation template mirroring the module~~ moved to v0.2 (decided 2026-11-19: v0.1.0 is Terraform-only)
 - [ ] `docs/` complete: architecture, permissions, detectors, ADRs
 - [ ] README: pitch, demo GIF, 2-minute install, config table, safety section, cost section, FAQ, uninstall
 - [ ] Release workflow + `v0.1.0` tag
@@ -493,6 +493,5 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - `scripts/check_iam.py` is stricter than section 10's grep: it rejects any `*` in an action (e.g. `ec2:Describe*` too), Delete/Terminate/Release (case-insensitive), and fails if a file has no actions (parser miss). Reads HCL `actions`/`not_actions` and JSON/jsonencode `Action`/`NotAction`. Add `cloudformation/cloudtripwire.yaml` to its args when that exists.
   - Local gitleaks on full history (`gitleaks git --redact .`): no leaks, 15 commits.
   - Suite timing is noisy on this laptop: 8.5–13s for 159 tests across runs (same code). The 14 IAM tests take 0.06s. If CI shows it consistently over 10s, the first `ec2` call (~2s warm-up in `test_ebs_finds_unattached_volume`) is the biggest single cost.
-- **Open decisions:**
-  - CloudFormation one-click at launch vs Terraform-only first (section 10)
+- **Open decisions:** none. (2026-11-19: v0.1.0 is Terraform-only; CloudFormation one-click and Slack move to v0.2.)
 - **Blockers:** none
