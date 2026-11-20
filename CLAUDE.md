@@ -390,8 +390,8 @@ Each milestone ends with tests passing and something demoable.
 ### M2 — TTL + kill switch (week 2)
 - [x] TTL parser + tests (`parse_ttl`, `is_expired`, `needs_warning` in `common/tags.py`)
 - [x] TTL handler (observe + enforce), warnings, lab mode; deployed and verified on real AWS 2026-10-24 (EC2 stop path)
-- [ ] Kill switch handler + fixtures + tests
-- [ ] Terraform: ttl + killswitch Lambdas, IAM, EventBridge rules (us-east-1 for Health events) (ttl done and applied 2026-10-24; killswitch to do)
+- [x] Kill switch handler + fixtures + tests (2026-11-19, moto; GuardDuty sample findings are alert only)
+- [x] Terraform: ttl + killswitch Lambdas, IAM, EventBridge rules (us-east-1 forwards Health + GuardDuty to the home bus) (ttl applied 2026-10-24, killswitch applied 2026-11-19)
 - [ ] ~~Slack channel~~ moved to v0.2 (decided 2026-11-19; config already rejects `slack`)
 - [ ] Guardrails: pre-commit snippet + GitHub Action for users
 - [x] IAM destructive-action check in CI (`scripts/check_iam.py` + `iam-guard` job in `ci.yml`, tests in `tests/unit/test_check_iam.py`)
@@ -438,11 +438,12 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 ## 15. Status
 
-- **Current milestone:** M2 in progress. **M1 complete** (2026-10-24; CI green on GitHub run #3, `4a64a35`). M2 done so far: TTL parser, TTL handler, TTL Terraform (applied, test account in `enforce`), TTL demo passed.
+- **Current milestone:** M2 in progress. **M1 complete** (2026-10-24; CI green on GitHub run #3, `4a64a35`). M2 done so far: TTL (parser, handler, Terraform, demo passed); kill switch parser, handler and Terraform (applied 2026-11-19, `enforce`). Left: kill switch demo, guardrails.
+- **Session 2026-11-19:** v0.1.0 scope recorded (Terraform-only; Slack + CloudFormation to v0.2). Kill switch parser, handler, Terraform written. Applied `reviewed.tfplan` (17 add, 2 change, 0 destroy): kill switch live in ca-central-1, with forward rules in us-east-1. EventBridge accepted the us-east-1 → ca-central-1 default-bus targets. The sweep digest fix (`023d7e5`) is now deployed. Then added the GuardDuty sample-finding guard (`ba2618c`), planned but not applied. CI change: the module can't be validated standalone (needs the `aws.us_east_1` alias), so CI validates it via `examples/basic` only; not yet run on GitHub.
 - **Last session:** 2026-10-24 (fourth). Applied `reviewed.tfplan` (8 add, 1 change). TTL demo passed on real AWS: seeded `i-0ed467fd560cf3759` (t3.micro, `ttl=30m`, launched 15:44:17Z); the first invoke sent the one-hour warning; the scheduled run at 16:44:06Z stopped it ("ttl 30m, expired 29 min ago"), tagged `tripwire:stopped-at=2026-10-24T16:44:06+00:00`, wrote the `ACTION#2026-10-24` item (with undo command, `expires_at`), Telegram + email ok, `ttl_summary` stopped=1, 17 regions, 25.3 s. This confirms the `StringNotEqualsIgnoreCase` and `aws:TagKeys` IAM conditions allow the EC2 stop + tag. `cleanup_seed.py` terminated the instance (confirmed `terminated`). Sweep digest mode line fixed (`023d7e5`, not applied).
 - **Next steps:**
-  1. M2: apply the kill switch Terraform (needs approval). `deploy/test/reviewed.tfplan` (2026-11-19): 17 add, 2 change (sweep + ttl `source_code_hash` only), 0 destroy. It also ships the sweep digest fix (`023d7e5`); until applied, the deployed sweep still prints "Mode: enforce (the sweep only reports; ...)". Parser + handler done 2026-11-19, moto only; `GetAccessKeyLastUsed` swap approved.
-  2. After apply: verify forwarding with GuardDuty sample findings in us-east-1 (needs GuardDuty enabled, free trial; approval), and invoke the Lambda with `tests/fixtures/health_credentials_exposed.json` in observe mode. Unverified in docs: default-bus cross-region targets, forwarded events keeping `source`, forwarding cost. Fallback design in `docs/architecture.md`.
+  1. Apply the sample-finding guard (`ba2618c`, needs approval) **before any GuardDuty test**. `deploy/test/reviewed.tfplan` (2026-11-19): 0 add, 3 change, 0 destroy; all three Lambdas change `source_code_hash` only, because they share one zip of `src/` (any code change redeploys all three). The deployed kill switch does NOT yet ignore sample findings.
+  2. Then verify forwarding with GuardDuty sample findings in us-east-1 and ca-central-1 (needs GuardDuty enabled, free trial; approval). Expect the "sample finding received, no action taken" alert. Still unverified: forwarded events keeping `source`, forwarding cost. Fallback design in `docs/architecture.md`.
   3. Then M2 guardrails (pre-commit snippet + GitHub Action).
 - **Known gaps:**
   - RDS stop path (`rds:StopDBInstance`, `rds:AddTagsToResource` with the `aws:ResourceTag` / `aws:TagKeys` conditions) is **untested on real AWS**: only moto. The `--ttl-instance` demo covers EC2 only. An RDS test needs a db.t3.micro (costs money; needs approval).
