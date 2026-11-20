@@ -28,6 +28,16 @@ Each step runs even if an earlier one failed; every failure becomes an alert lin
 `killswitch_mode = observe` makes no IAM/EC2 write calls and writes no action log; the
 alert says "Would deactivate" / "Would stop".
 
+**GuardDuty sample findings are alert only, in every mode.** Findings with
+`detail.service.additionalInfo.sample = true` (from `aws guardduty
+create-sample-findings` or the console's "Generate sample findings") send one
+"sample finding received, no action taken" alert and log `{"event": "sample_finding"}`.
+The check runs before any AWS call: no key lookup, no `UpdateAccessKey`, no
+`StopInstances`, no action log. Sample findings name fake resources, but a recently
+launched instance of yours would otherwise be stopped by the lookback rule. This makes
+`create-sample-findings` a safe way to test the event routing. Fixture:
+`tests/fixtures/guardduty_sample.json`.
+
 Not handled in v1: the instance named in a CryptoCurrency finding is only stopped if it
 falls inside the lookback window; repeat GuardDuty findings (default every 6 hours)
 re-run the steps and re-alert (already-inactive keys and stopped instances are no-ops).

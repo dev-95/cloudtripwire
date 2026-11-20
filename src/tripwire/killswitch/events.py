@@ -34,6 +34,7 @@ class KillTarget:
     user_name: str | None  # None for Health (look it up); role name for AssumedRole keys
     user_type: str | None  # GuardDuty userType, e.g. "IAMUser" or "AssumedRole"
     instance_id: str | None  # GuardDuty EC2 findings only
+    sample: bool = False  # GuardDuty sample finding: alert only, never act
 
 
 def mask_key(key_id: str | None) -> str:
@@ -96,11 +97,22 @@ def _parse_guardduty(event: dict) -> KillTarget | None:
         user_name=key.get("userName") or None,
         user_type=key.get("userType") or None,
         instance_id=instance.get("instanceId") or None,
+        sample=is_sample(detail),
     )
+    if target.sample:
+        return target  # always alerted, even without a key or instance
     if target.access_key_id is None and target.instance_id is None:
         _skip("nothing_to_act_on", event_type=finding_type)
         return None
     return target
+
+
+def is_sample(detail: dict) -> bool:
+    """GuardDuty sample findings (CreateSampleFindings, console "Generate sample findings")
+    carry detail.service.additionalInfo.sample = true. Their key and instance are fake or
+    the user's own, so acting on them would stop real things for a test."""
+    info = (detail.get("service") or {}).get("additionalInfo") or {}
+    return info.get("sample") in (True, "true", "True")
 
 
 def _skip(reason: str, **fields: Any) -> None:

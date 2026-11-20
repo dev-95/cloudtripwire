@@ -53,6 +53,27 @@ def test_guardduty_exfiltration_has_role_session_key():
     )
 
 
+def test_guardduty_sample_finding_is_marked():
+    target = parse_event(load("guardduty_sample.json"))
+    assert target is not None and target.sample is True
+    assert target.instance_id == "i-99999999"
+    assert parse_event(load("guardduty_crypto.json")).sample is False
+    assert parse_event(load("health_credentials_exposed.json")).sample is False
+
+
+@pytest.mark.parametrize(("value", "expected"), [(True, True), ("true", True), (False, False)])
+def test_sample_flag_values(value, expected):
+    event = load("guardduty_sample.json")
+    event["detail"]["service"]["additionalInfo"]["sample"] = value
+    assert parse_event(event).sample is expected
+
+
+def test_sample_without_key_or_instance_is_still_returned():
+    event = load("guardduty_sample.json")
+    del event["detail"]["resource"]["instanceDetails"]
+    assert parse_event(event).sample is True
+
+
 def test_health_event_without_key_id_is_skipped(caplog):
     event = load("health_credentials_exposed.json")
     event["detail"]["affectedEntities"] = []

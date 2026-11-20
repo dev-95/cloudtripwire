@@ -277,21 +277,15 @@ def build_message(target: KillTarget, report: Report, mode: str) -> str:
     return notify.fit_message(header, intro + body, footer)
 
 
-def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    started = time.monotonic()
-    target = parse_event(event)  # logs and returns None for anything it can't use
-    if target is None:
-        return {"status": "skipped"}
-    now = _now()
-    config = load_config()
-    mode = config.killswitch_mode
-    table = _dynamodb().Table(config.state_table)
-    report = Report()
+def sample_message(target: KillTarget) -> str:
+    return notify.fit_message(
+        "🧪 CloudTripwire kill switch: sample finding received, no action taken",
+        [f"Trigger: GuardDuty {target.finding_type} (sample)"],
+        ["GuardDuty sample findings never deactivate keys or stop instances, in any mode."],
+    )
 
-    deactivate_key(target, mode, now, table, report)
-    regions_checked = stop_recent(target, config, now, table, report)
 
-    message = build_message(target, report, mode)
+def _send(message: str, config: Config) -> None:
     try:
         sent = notify.send(
             message,
@@ -304,6 +298,28 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         sent = {}
         logger.error(json.dumps({"event": "notify_failed", "error": _error_code(e)}))
     logger.info(json.dumps({"event": "notify_result", "channels": sent}))
+
+
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    started = time.monotonic()
+    target = parse_event(event)  # logs and returns None for anything it can't use
+    if target is None:
+        return {"status": "skipped"}
+    config = load_config()
+    mode = config.killswitch_mode
+
+    if target.sample:  # checked before any AWS call: zero mutating calls in any mode
+        logger.info(json.dumps({"event": "sample_finding", "finding_type": target.finding_type}))
+        _send(sample_message(target), config)
+        return {"status": "sample", "mode": mode, "finding_type": target.finding_type}
+
+    now = _now()
+    table = _dynamodb().Table(config.state_table)
+    report = Report()
+
+    deactivate_key(target, mode, now, table, report)
+    regions_checked = stop_recent(target, config, now, table, report)
+    _send(build_message(target, report, mode), config)
 
     summary: dict[str, Any] = {
         "status": "handled",

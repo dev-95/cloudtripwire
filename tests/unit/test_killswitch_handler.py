@@ -292,6 +292,49 @@ def test_crypto_finding_without_key_stops_recent_instances(ks):
     assert "Find who launched the instance" in msg
 
 
+def sample_with_user_key(key_id: str) -> dict:
+    """A sample finding that, if it weren't a sample, would deactivate a real key."""
+    event = load("guardduty_sample.json")
+    event["detail"]["type"] = "UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration.OutsideAWS"
+    event["detail"]["resource"] = {
+        "resourceType": "AccessKey",
+        "accessKeyDetails": {"accessKeyId": key_id, "userName": "bob", "userType": "IAMUser"},
+    }
+    return event
+
+
+@pytest.mark.parametrize("mode", ["enforce", "observe"])
+def test_sample_findings_alert_only_with_zero_mutating_calls(ks, monkeypatch, caplog, mode):
+    monkeypatch.setenv("KILLSWITCH_MODE", mode)
+    iid, launched = launch()
+    ks.clock.now = launched + timedelta(minutes=5)
+
+    with caplog.at_level(logging.INFO):
+        crypto = handler.handler(load("guardduty_sample.json"), None)
+        keyed = handler.handler(sample_with_user_key(ks.key), None)
+
+    assert crypto["status"] == keyed["status"] == "sample"
+    assert ks.calls == []  # no update_access_key, stop_instances or create_tags
+    assert key_status(ks.key) == "Active"
+    assert instance(iid)["State"]["Name"] == "running"
+    assert actions() == []
+    assert len(ks.sent) == 2
+    for msg in ks.sent:
+        assert "sample finding received, no action taken" in msg
+    assert caplog.text.count('"event": "sample_finding"') == 2
+    assert ks.key not in caplog.text + "\n".join(ks.sent)
+
+
+def test_enforce_spy_sees_a_real_finding_after_a_sample(ks):
+    """Proves the spy works in the sample test: the same setup does act on a real finding."""
+    handler.handler(sample_with_user_key(ks.key), None)
+    event = sample_with_user_key(ks.key)
+    del event["detail"]["service"]["additionalInfo"]
+    handler.handler(event, None)
+    assert "update_access_key" in ks.calls
+    assert key_status(ks.key) == "Inactive"
+
+
 def test_unusable_event_is_skipped_without_alert(ks):
     assert handler.handler({"source": "aws.health", "detail": {}}, None) == {"status": "skipped"}
     assert ks.sent == [] and ks.calls == []

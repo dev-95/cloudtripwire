@@ -19,4 +19,11 @@ Install in 2 minutes, stop surprise AWS bills: zombie cleanup, self-destruct tim
 
 Details, cost formulas and suggested fixes: [docs/detectors.md](docs/detectors.md).
 
+## FAQ
+
+**Will GuardDuty sample findings trigger the kill switch?**
+No. Sample findings (from "Generate sample findings" or `aws guardduty create-sample-findings`)
+only send a "sample finding received, no action taken" alert. They never deactivate a key
+or stop an instance, in any mode. See [docs/killswitch.md](docs/killswitch.md).
+
 License: MIT
