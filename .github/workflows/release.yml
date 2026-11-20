@@ -1,7 +1,8 @@
 # On a v* tag: test, zip the Lambda package (src/tripwire, the same code Terraform
 # deploys) and attach it with a SHA-256 file to the GitHub release.
 # Terraform users don't need the zip (the module builds its own); it is for anyone
-# deploying another way. The CloudFormation template is attached from v0.2.
+# deploying another way. From v0.2, also attach cloudformation/cloudtripwire.yaml
+# (the folder doesn't exist until then).
 
 name: Release
 

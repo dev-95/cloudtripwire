@@ -160,8 +160,7 @@ cloudtripwire/
 │   ├── sns.tf
 │   ├── versions.tf
 │   └── examples/basic/main.tf
-├── cloudformation/
-│   └── cloudtripwire.yaml        # one-click quick-create template (mirrors the TF module)
+├── (v0.2) cloudformation/cloudtripwire.yaml  # one-click template; folder removed until then
 ├── guardrails/
 │   ├── pre-commit-snippet.yaml   # for users to copy into their own repos
 │   └── secret-scan.yml           # reusable GitHub Action workflow for users
@@ -286,7 +285,7 @@ Runs hourly. Supported resource types in v1: **EC2 instances, RDS DB instances**
 
 ## 7. Configuration
 
-All set through Terraform variables (and mirrored as CloudFormation parameters), passed to Lambdas as environment variables.
+All set through Terraform variables (mirrored as CloudFormation parameters from v0.2), passed to Lambdas as environment variables.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -348,7 +347,7 @@ One role per Lambda. All three get `logs:CreateLogStream`, `logs:PutLogEvents` o
 2. `pytest -q`
 3. `terraform fmt -check -recursive` and `terraform validate` (in `terraform/` and `terraform/examples/basic`)
 4. gitleaks scan
-5. IAM wildcard/destructive-action check (grep for `Delete`, `Terminate`, `Release`, `"*"` actions in `terraform/iam.tf` and `cloudformation/`)
+5. IAM wildcard/destructive-action check (grep for `Delete`, `Terminate`, `Release`, `"*"` actions in `terraform/iam.tf`; add `cloudformation/` when the template lands in v0.2)
 
 A failing test blocks everything after it.
 
