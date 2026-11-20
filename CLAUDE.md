@@ -443,7 +443,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 - **Deployed (test account, ca-central-1 + us-east-1 forward rules):** all three Lambdas run `main` as of `e2d26fe` (`CodeSha256` `xStUabgc...`); `mode` and `killswitch_mode` are `enforce`. Later commits are docs/CI only (no `src/` change).
 - **Next steps:**
   1. Devesh: push, and check CI is green. First runs of: module validated via `examples/basic` only (it can't validate standalone, it needs the `aws.us_east_1` alias), `release.yml` (runs on tags only), new `test_check_iam` test.
-  2. Re-verify `pricing.py` against the AWS Price List before tagging (last checked 2026-10-19).
+  2. ~~Re-verify `pricing.py`~~ Done 2026-11-20: all 15 prices unchanged (comment-only edit to `pricing.py`; it still changes the zip hash, so the next plan shows 3 in-place Lambda updates with no behaviour change).
   3. Record the demo GIF (`docs/demo.gif`) and replace the README placeholder.
   4. Devesh tags `v0.1.0`; `release.yml` attaches `cloudtripwire-lambda-v0.1.0.zip` + `SHA256SUMS`. The README install uses `?ref=v0.1.0`, which only resolves after the tag exists.
   5. M3 demo: install from the README alone in a fresh account. Then launch posts.
@@ -488,7 +488,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
   - `notify.py` pins the `botocore` logger to INFO: at DEBUG botocore logs response bodies, including decrypted SSM tokens (the caplog test caught this). Failures log the error type and status/code only, never `str(e)`.
   - Digest footer: "Fix commands: in the sweep Lambda's CloudWatch logs." (spec 6.1 updated). Config rejects `slack` until v0.2; `notify.send` also returns False for it as a backstop.
   - Notify uses `ssm:GetParameter` (one call per secret, matching section 8 IAM) and `sns:Publish`.
-  - Prices in `pricing.py` verified 2026-10-19 against the AWS public Price List files (us-east-1); the pricing pages only show examples. Re-verify before release (Next steps 2).
+  - Prices in `pricing.py` re-verified 2026-11-20 (first 2026-10-19), us-east-1. IPv4 and ELB: public offer files (`offers/v1.0/aws/AmazonVPC|AWSELB/current/us-east-1/index.json`, published 2026-11-19). EBS, snapshot, NAT: Price List Query API (`aws pricing get-products --service-code AmazonEC2`, read-only, works on the Free plan), because the `meteredUnitMaps` files were last modified 2024-10. Pricing pages only show examples.
   - `Config` includes `sweep_schedule`, `ttl_schedule`, `tags` for completeness; only Terraform actually uses them.
   - `Config.state_table` / `alert_topic_arn` come from `STATE_TABLE` / `ALERT_TOPIC_ARN`, set by Terraform (not user variables, no validation).
   - Tests use the shared `aws` fixture in `tests/conftest.py` (fake creds + `mock_aws`, yields the mock; default AMIs off for speed; use any fake AMI id). Use `tests/helpers.py` `client()` / `clients()` / `dynamodb()`: they cache boto3 clients per process because building one costs ~0.25–0.4s. `test_helpers.py` proves each mock still starts empty. Nested `mock_aws()` shares state with the outer mock; don't rely on nesting for isolation. pytest-xdist was tried and removed (per-worker warm-up made it slower).

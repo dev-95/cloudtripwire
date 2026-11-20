@@ -1,8 +1,12 @@
 """Fallback price table + monthly cost helpers.
 
 All prices are us-east-1 on-demand list prices (USD) and are estimates for every
-other region. Verified 2026-10-19 against the AWS public Price List files below;
-the human-readable pages only show worked examples with the same numbers.
+other region. Re-verified 2026-11-20 (first checked 2026-10-19): every value below
+matched the AWS Price List. IPv4 and load balancers: the public offer files below
+(published 2026-11-19). EBS, snapshots, NAT: the Price List Query API
+(`pricing get-products`, ServiceCode AmazonEC2, location "US East (N. Virginia)"),
+because their metered-unit files were last modified in 2024. The human-readable
+pricing pages only show worked examples with the same numbers.
 """
 
 import json
@@ -14,8 +18,10 @@ logger = logging.getLogger(__name__)
 HOURS_PER_MONTH = 730
 
 # EBS storage per GB-month (storage only; provisioned IOPS/throughput not included).
-# Source: https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ebs.json
-# Page: https://aws.amazon.com/ebs/pricing/ (verified 2026-10-19)
+# Source: Price List Query API, productFamily "Storage", volumeApiName <type>
+#   (usagetype EBS:VolumeUsage.<type>; io1 is EBS:VolumeUsage.piops, standard is
+#   EBS:VolumeUsage). Also in meteredUnitMaps/ec2/USD/current/ebs.json.
+# Page: https://aws.amazon.com/ebs/pricing/ (verified 2026-11-20)
 EBS_GB_MONTH = {
     "gp3": 0.08,
     "gp2": 0.10,
@@ -26,22 +32,27 @@ EBS_GB_MONTH = {
     "standard": 0.05,  # magnetic, previous generation
 }
 
-# EBS snapshot, standard tier, per GB-month. Same source as EBS (verified 2026-10-19).
+# EBS snapshot, standard tier, per GB-month. Price List Query API, usagetype
+# EBS:SnapshotUsage (verified 2026-11-20).
 SNAPSHOT_GB_MONTH = 0.05
 
 # Public IPv4 address, in-use or idle, per hour.
 # Source: https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonVPC/current/us-east-1/index.json
-# Page: https://aws.amazon.com/vpc/pricing/ (verified 2026-10-19)
+# usagetype USE1-PublicIPv4:InUseAddress and :IdleAddress, both $0.005.
+# Page: https://aws.amazon.com/vpc/pricing/ (verified 2026-11-20)
 PUBLIC_IPV4_HOUR = 0.005
 
 # NAT gateway per hour (data processing $0.045/GB not included).
-# Source: https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/natgateway.json
-# Page: https://aws.amazon.com/vpc/pricing/ (verified 2026-10-19)
+# Source: Price List Query API, productFamily "NAT Gateway", usagetype NatGateway-Hours.
+#   Also in meteredUnitMaps/ec2/USD/current/natgateway.json.
+# Page: https://aws.amazon.com/vpc/pricing/ (verified 2026-11-20)
 NAT_GATEWAY_HOUR = 0.045
 
 # Load balancer per hour (LCU / data charges not included). Gateway LB is per AZ.
 # Source: https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSELB/current/us-east-1/index.json
-# Page: https://aws.amazon.com/elasticloadbalancing/pricing/ (verified 2026-10-19)
+# usagetype LoadBalancerUsage per productFamily (Load Balancer-Application/-Network/
+#   -Gateway; plain "Load Balancer" is Classic).
+# Page: https://aws.amazon.com/elasticloadbalancing/pricing/ (verified 2026-11-20)
 LOAD_BALANCER_HOUR = {
     "application": 0.0225,
     "network": 0.0225,

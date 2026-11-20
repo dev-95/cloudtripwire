@@ -6,7 +6,7 @@ read-only: they never stop, delete, or release anything. Any resource tagged
 
 Costs are estimates from the us-east-1 list prices in
 [`src/tripwire/common/pricing.py`](../src/tripwire/common/pricing.py) (verified
-2026-10-19). Prices in other regions can differ.
+against the AWS Price List on 2026-11-20). Prices in other regions can differ.
 
 Fix commands are suggestions for **you** to run. CloudTripwire never runs them. They
 are written to the sweep Lambda's CloudWatch logs (one `finding` event per resource,
