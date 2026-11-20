@@ -440,10 +440,10 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 - **Current milestone:** M3 (launch). M1 complete 2026-10-24, M2 complete 2026-11-20 (Slack moved to v0.2). M3 done: docs, README, `release.yml`. Left: demo GIF, price re-check, push + CI, `v0.1.0` tag, fresh install test, launch posts.
 - **Last session:** 2026-11-19/20. Kill switch built (parser, handler, Terraform), deployed and demoed; forwarding proven; user guardrails, ADR 0001; notify timeout 15 s; launch docs + README + release workflow.
-- **Deployed (test account, ca-central-1 + us-east-1 forward rules):** all three Lambdas run `main` as of `e2d26fe` (`CodeSha256` `xStUabgc...`); `mode` and `killswitch_mode` are `enforce`. Later commits are docs/CI only (no `src/` change).
+- **Deployed (test account, ca-central-1 + us-east-1 forward rules):** all three Lambdas run `main` as of `c25e020` (`CodeSha256` `zNVQrHlx...`, applied 2026-11-20); `mode` and `killswitch_mode` are `enforce`.
 - **Next steps:**
   1. Devesh: push, and check CI is green. First runs of: module validated via `examples/basic` only (it can't validate standalone, it needs the `aws.us_east_1` alias), `release.yml` (runs on tags only), new `test_check_iam` test.
-  2. ~~Re-verify `pricing.py`~~ Done 2026-11-20: all 15 prices unchanged (comment-only edit to `pricing.py`; it still changes the zip hash, so the next plan shows 3 in-place Lambda updates with no behaviour change).
+  2. ~~Re-verify `pricing.py`~~ Done 2026-11-20: all 15 prices unchanged (comment-only edit to `pricing.py`), deployed.
   3. Record the demo GIF (`docs/demo.gif`) and replace the README placeholder.
   4. Devesh tags `v0.1.0`; `release.yml` attaches `cloudtripwire-lambda-v0.1.0.zip` + `SHA256SUMS`. The README install uses `?ref=v0.1.0`, which only resolves after the tag exists.
   5. M3 demo: install from the README alone in a fresh account. Then launch posts.
