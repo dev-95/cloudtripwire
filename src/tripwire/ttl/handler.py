@@ -21,6 +21,8 @@ from tripwire.common import notify, regions, state
 from tripwire.common.config import Config, load_config
 from tripwire.common.models import Action
 from tripwire.common.tags import (
+    ASG_TAG,  # noqa: F401  (tests use handler.ASG_TAG)
+    ec2_blocked_reason,
     get_ttl_value,
     is_expired,
     is_ignored,
@@ -32,7 +34,6 @@ from tripwire.common.tags import (
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-ASG_TAG = "aws:autoscaling:groupName"
 STOPPED_AT_TAG = "tripwire:stopped-at"
 MAX_TAG_VALUE_SHOWN = 40  # the ttl value is user input; keep it short in alerts
 FAILURE_MARKER_TTL = timedelta(days=2)  # daily failure markers clean themselves up
@@ -72,14 +73,6 @@ class Verdict:
     status: Literal["ok", "unreadable", "warning", "expired"]
     rule: str = ""  # "ttl 4h", or the lab mode rule
     expiry: datetime | None = None
-
-
-def ec2_blocked_reason(instance: dict[str, Any], tags: dict[str, str]) -> str:
-    if group := tags.get(ASG_TAG):
-        return f"it belongs to Auto Scaling group {group}, which would replace it"
-    if instance.get("InstanceLifecycle") == "spot":
-        return "it is a Spot Instance; stop or cancel it through its Spot request"
-    return ""
 
 
 def rds_blocked_reason(db: dict[str, Any]) -> str:

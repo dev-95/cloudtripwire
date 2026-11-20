@@ -2,7 +2,35 @@
 
 The kill switch reacts to leaked or misused credentials. This page covers the trigger
 events and what the parser (`src/tripwire/killswitch/events.py`) takes from each.
-Actions are in CLAUDE.md section 6.3; this page grows as the handler lands.
+Actions are in CLAUDE.md section 6.3.
+
+## What the handler does (`src/tripwire/killswitch/handler.py`)
+
+Each step runs even if an earlier one failed; every failure becomes an alert line.
+
+1. **Key.** Health events don't name the user, so it is looked up with
+   `iam:GetAccessKeyLastUsed` (GuardDuty `IAMUser` findings name it). Then
+   `iam:UpdateAccessKey Status=Inactive`; never deleted. Temporary credentials (`ASIA...`,
+   or any non-`IAMUser` type) can't be deactivated: the alert says how to revoke the
+   role's sessions instead. CryptoCurrency findings have no key, so this step is skipped.
+2. **Instances.** In every enabled region, `pending`/`running` instances launched within
+   `killswitch_lookback_minutes` are stopped and tagged `tripwire:quarantined=true`.
+   `tripwire=ignore` instances are skipped silently; Auto Scaling group members and Spot
+   Instances are alert only (same rule as TTL, `common/tags.ec2_blocked_reason`).
+3. **Log.** Each action goes to the DynamoDB action log with its undo command. The key
+   undo there has the full key ID so it can be run as is; CloudWatch logs and alerts
+   only ever show the last 4 characters. IAM error messages contain the key ID, so only
+   error codes are logged.
+4. **Alert.** One message, always (even when nothing was stopped): trigger, account,
+   failures first, then what was done or would be done, then the manual next steps
+   (rotate the key, CloudTrail, unknown IAM users/keys/instances, AWS Support).
+
+`killswitch_mode = observe` makes no IAM/EC2 write calls and writes no action log; the
+alert says "Would deactivate" / "Would stop".
+
+Not handled in v1: the instance named in a CryptoCurrency finding is only stopped if it
+falls inside the lookback window; repeat GuardDuty findings (default every 6 hours)
+re-run the steps and re-alert (already-inactive keys and stopped instances are no-ops).
 
 ## Trigger events (checked 2026-11-19)
 

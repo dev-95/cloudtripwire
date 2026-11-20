@@ -24,6 +24,18 @@ def is_ignored(tags: dict[str, str]) -> bool:
     return (_get(tags, "tripwire") or "").strip().lower() == "ignore"
 
 
+ASG_TAG = "aws:autoscaling:groupName"
+
+
+def ec2_blocked_reason(instance: dict, tags: dict[str, str]) -> str:
+    """Why an EC2 instance must never be stopped (alert only); "" = stoppable."""
+    if group := tags.get(ASG_TAG):
+        return f"it belongs to Auto Scaling group {group}, which would replace it"
+    if instance.get("InstanceLifecycle") == "spot":
+        return "it is a Spot Instance; stop or cancel it through its Spot request"
+    return ""
+
+
 def get_ttl_value(tags: dict[str, str]) -> str | None:
     return _get(tags, "ttl")
 
