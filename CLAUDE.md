@@ -34,19 +34,13 @@ It **finds** the problem, **estimates what it costs**, **alerts** the user (Tele
 
 ---
 
-## 2. Owner and goals
+## 2. Maintainer and goals
 
-- **Owner:** Devesh Chalasani (GitHub `dev-95`). Cloud/DevOps/SRE job seeker in Canada. Certified AZ-104, Terraform Associate, AWS AI Practitioner.
-- **Dev machine:** Windows laptop, VS Code, Claude Code. Use PowerShell or Git Bash/WSL commands as appropriate; prefer cross-platform Python scripts over bash where practical.
-- **Time available:** part-time, around shift work. Keep tasks small and finishable in one sitting.
+- **Maintainer:** GitHub `dev-95`.
 
 ### Project goals (in priority order)
 1. **Real users.** Ship something people actually install. Track installs, GitHub stars, and cost flagged.
-2. **Portfolio proof** for Cloud/DevOps/SRE roles: Terraform module, event-driven AWS automation, IAM least privilege, security automation, FinOps, CI with tests.
-3. **Clean, readable code** a hiring manager can skim in 5 minutes.
-
-### Target resume bullet (what we're building toward)
-"Built and open-sourced CloudTripwire, an in-account AWS safety net (Terraform, Lambda, EventBridge, GuardDuty) that detects idle resources, enforces TTL tags, and auto-quarantines leaked keys; used by N people, flagging $X/month in idle spend."
+2. **Clean, readable code** a new contributor can skim in 5 minutes.
 
 ---
 
@@ -353,7 +347,7 @@ A failing test blocks everything after it.
 
 `release.yml` on tag `v*`: run ruff + pytest, zip the Lambda package (one zip of `src/tripwire`; all three Lambdas use it), attach it with `SHA256SUMS` to the GitHub release. From v0.2 it also attaches `cloudformation/cloudtripwire.yaml`.
 
-CloudFormation one-click link (README): `https://console.aws.amazon.com/cloudformation/home#/stacks/create/review?templateURL=<public S3 URL of the template>&stackName=cloudtripwire`. Hosting the template publicly requires a public S3 bucket owned by Devesh. **Decided 2026-11-19:** v0.1.0 ships Terraform-only; the CloudFormation template and one-click link move to v0.2.
+CloudFormation one-click link (README): `https://console.aws.amazon.com/cloudformation/home#/stacks/create/review?templateURL=<public S3 URL of the template>&stackName=cloudtripwire`. Hosting the template publicly requires a public S3 bucket owned by the maintainer. **Decided 2026-11-19:** v0.1.0 ships Terraform-only; the CloudFormation template and one-click link move to v0.2.
 
 ---
 
@@ -420,7 +414,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 
 ## 14. Working rules for Claude Code
 
-1. **Never touch real AWS without explicit approval.** Do not run `terraform apply`, `terraform destroy`, or any mutating `aws` CLI command unless Devesh says so in that moment. Read-only commands (`aws sts get-caller-identity`, `terraform plan`) are fine.
+1. **Never touch real AWS without explicit approval.** Do not run `terraform apply`, `terraform destroy`, or any mutating `aws` CLI command unless the maintainer says so in that moment. Read-only commands (`aws sts get-caller-identity`, `terraform plan`) are fine.
 2. **Use the test account only.** AWS CLI profile `tripwire-test`. Refuse to run against any other profile. Confirm with `aws sts get-caller-identity --profile tripwire-test` before any approved apply.
 3. **Never commit secrets.** No tokens, keys, chat IDs, or webhook URLs in code, tests, fixtures, or docs. Use obvious fakes in tests (`AKIAEXAMPLE0000TEST`).
 4. **Tests first or alongside.** Every new detector/handler ships with tests in the same change. Run `pytest -q` and `ruff check` before saying a task is done.
@@ -428,10 +422,10 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 6. **Small steps.** One milestone checkbox per change where possible. Explain what changed in 2–4 lines.
 7. **Verify AWS facts.** Event formats, API names, and prices change. When unsure, check current AWS docs and note the source in a code comment or `docs/`.
 8. **Keep docs in sync.** IAM change → update `docs/permissions.md`. New detector → update `docs/detectors.md` and the README table.
-9. **Windows-friendly.** Give commands that work in PowerShell or note when Git Bash/WSL is needed.
+9. **Windows-friendly.** The project supports Windows development: give commands that work in PowerShell or note when Git Bash/WSL is needed, and prefer cross-platform Python scripts over bash where practical.
 10. **Update the Status section below** at the end of each session.
 11. **File changes use Edit/Write only.** Shell is for running commands (pytest, ruff, git), never for writing files.
-12. Never run git push. Devesh pushes manually.
+12. Never run git push. The maintainer pushes manually.
 
 ---
 
@@ -441,12 +435,12 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
 - **Last session:** 2026-11-19/20. Kill switch built (parser, handler, Terraform), deployed and demoed; forwarding proven; user guardrails, ADR 0001; notify timeout 15 s; launch docs + README + release workflow.
 - **Deployed (test account, ca-central-1 + us-east-1 forward rules):** all three Lambdas run `main` as of `c25e020` (`CodeSha256` `zNVQrHlx...`, applied 2026-11-20); `mode` and `killswitch_mode` are `enforce`.
 - **Next steps:**
-  1. Devesh: push, and check CI is green. First runs of: module validated via `examples/basic` only (it can't validate standalone, it needs the `aws.us_east_1` alias), `release.yml` (runs on tags only), new `test_check_iam` test.
+  1. The maintainer pushes; check CI is green. First runs of: module validated via `examples/basic` only (it can't validate standalone, it needs the `aws.us_east_1` alias), `release.yml` (runs on tags only), new `test_check_iam` test.
   2. ~~Re-verify `pricing.py`~~ Done 2026-11-20: all 15 prices unchanged (comment-only edit to `pricing.py`), deployed.
   3. ~~Demo GIF~~ Replaced by two real alert screenshots under "What it looks like" (`26cd8ac`). The digest screenshot shows the old sweep mode line ("Mode: observe (nothing was changed)"), from before `023d7e5`; fine since it's captioned as the first test deploy.
-  4. Devesh tags `v0.1.0`; `release.yml` attaches `cloudtripwire-lambda-v0.1.0.zip` + `SHA256SUMS`. The README install uses `?ref=v0.1.0`, which only resolves after the tag exists.
+  4. The maintainer tags `v0.1.0`; `release.yml` attaches `cloudtripwire-lambda-v0.1.0.zip` + `SHA256SUMS`. The README install uses `?ref=v0.1.0`, which only resolves after the tag exists.
   5. M3 demo: install from the README alone in a fresh account. Then launch posts.
-- **Test account:** on the AWS **Free plan** (until 2027-02-10), so GuardDuty can't be enabled. No seed or canary resources left: the canary key, user `tripwire-canary` and `i-04c5959ed7b6e0b41` were removed by Devesh on 2026-11-20.
+- **Test account:** on the AWS **Free plan** (until 2027-02-10), so GuardDuty can't be enabled. No seed or canary resources left: the canary key, user `tripwire-canary` and `i-04c5959ed7b6e0b41` were removed by the maintainer on 2026-11-20.
 - **Known gaps:**
   - RDS stop path (`rds:StopDBInstance`, `rds:AddTagsToResource` with the IAM conditions) tested in moto only; a live test needs a db.t3.micro (costs money; approval).
   - No real `aws.health` / `aws.guardduty` event seen end to end. Forwarding was proven with a custom source; `aws.*` sources can't be sent by hand.
@@ -464,7 +458,7 @@ Deleting resources, Azure/GCP, a web dashboard, AWS Organizations multi-account 
     - Sync `aws lambda invoke`: `--cli-read-timeout 310` and `AWS_MAX_ATTEMPTS=1`, or a run over 60 s is retried (double invoke). `--log-type Tail` returns the last 4 KB of logs; CloudWatch lags ~30 s.
     - EventBridge `rate(1 hour)` fires right after the rule is created, then hourly from that time (TTL runs at :44), not on the clock hour.
     - Telegram troubleshooting: SSM values are read on every send (nothing caches them); notify logs Telegram's `description` (token scrubbed) and "Telegram not configured" for `REPLACE_ME`. Quoted values break it; `ssm_setup_commands` trims them.
-  - Suite: 252 tests. Timing is noisy on this laptop (it has been 8.5–13 s at earlier sizes); the biggest single cost is moto's first EC2 call (~1.5–2 s). Revisit if CI is consistently over the 15 s target.
+  - Suite: 252 tests. Timing is noisy on local Windows runs (it has been 8.5–13 s at earlier sizes); the biggest single cost is moto's first EC2 call (~1.5–2 s). Revisit if CI is consistently over the 15 s target.
   - TTL handler: one message per run (`⏰ CloudTripwire TTL: N updates`), lines ordered stopped → would stop → won't stop → warnings → unreadable; failure warnings are deduped once per UTC day per (region, error code) via `should_alert(..., keep_for=2 days)` (markers `ALERT#<region>` / `ttl_check_failed#<code>#<date>`); every failure is still logged. `checks_failed` in the summary counts all, `failures_reported` the ones alerted. Alert-once keys include the expiry/value, so a changed tag re-alerts. In enforce mode a stop is always alerted; a tagging or action-log failure after a successful stop is logged at ERROR in the `stopped` event but doesn't hide the stop.
   - TTL tests: `ttl` fixture spies on `stop_instances`, `create_tags`, `stop_db_instance`, `add_tags_to_resource` (passing through to moto); the enforce test asserts the spy sees all four so `calls == []` in other tests is meaningful. Clock is set from the moto `LaunchTime`/`InstanceCreateTime`. moto supports Spot lifecycle, `aws:` tags on instances, Aurora members and read replicas.
   - `notify.fit_message(header, lines, footer)` is the shared under-4,000-chars truncation (digest + TTL). `tests/helpers.create_state_table()` builds the moto table.
