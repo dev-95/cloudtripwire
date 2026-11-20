@@ -1,8 +1,14 @@
 # Kill switch
 
-The kill switch reacts to leaked or misused credentials. This page covers the trigger
-events and what the parser (`src/tripwire/killswitch/events.py`) takes from each.
-Actions are in CLAUDE.md section 6.3.
+The kill switch reacts to leaked or misused credentials: it deactivates the key,
+stops instances launched in the last hour, and alerts you with how to undo it. It
+defaults to `enforce` (why: [ADR 0002](decisions/0002-killswitch-enforce-default.md)).
+Set `killswitch_mode = "observe"` to get the alert only.
+
+Triggers: AWS Health's exposed-key event (any account, nothing to enable) and, if you
+have GuardDuty, its crypto-mining and credential-exfiltration findings. How events
+reach the Lambda across regions: [architecture.md](architecture.md#kill-switch-event-routing).
+Permissions: [permissions.md](permissions.md#kill-switch-lambda-cloudtripwire-killswitch).
 
 ## What the handler does (`src/tripwire/killswitch/handler.py`)
 
@@ -38,14 +44,36 @@ launched instance of yours would otherwise be stopped by the lookback rule. This
 `create-sample-findings` a safe way to test the event routing. Fixture:
 `tests/fixtures/guardduty_sample.json`.
 
+## Trying it safely
+
+Use a throwaway IAM user with no permissions (`tripwire-canary` below) and a key you
+create for it. In PowerShell:
+
+```powershell
+# 1. Copy the sample event and put your canary key ID in affectedEntities[0].entityValue.
+Copy-Item tests/fixtures/health_credentials_exposed.json my-event.json   # then edit it
+# 2. Invoke the kill switch with it (us-east-1 path is bypassed; this calls the Lambda directly).
+$env:AWS_MAX_ATTEMPTS = "1"
+aws lambda invoke --function-name cloudtripwire-killswitch --cli-binary-format raw-in-base64-out `
+  --payload fileb://my-event.json --log-type Tail --cli-read-timeout 310 out.json
+# 3. Check: the key is Inactive.
+aws iam list-access-keys --user-name tripwire-canary
+```
+
+In `enforce` mode this **also stops every instance launched in the last
+`killswitch_lookback_minutes` in every region**. Run it when nothing you need was just
+launched, or set `killswitch_mode = "observe"` first. Undo with the commands in the
+alert. Don't commit `my-event.json` (it holds a real key ID).
+
 Not handled in v1: the instance named in a CryptoCurrency finding is only stopped if it
 falls inside the lookback window; repeat GuardDuty findings (default every 6 hours)
 re-run the steps and re-alert (already-inactive keys and stopped instances are no-ops).
 
 ## Trigger events (checked 2026-11-19)
 
-Every event is reduced to a `KillTarget`: `source`, `finding_type`, `account_id`,
-`region`, `access_key_id`, `user_name`, `user_type`, `instance_id`. Unknown, unhandled
+The parser (`src/tripwire/killswitch/events.py`) reduces every event to a `KillTarget`:
+`source`, `finding_type`, `account_id`, `region`, `access_key_id`, `user_name`,
+`user_type`, `instance_id`, `sample`. Unknown, unhandled
 or malformed events return `None` and log `killswitch_event_skipped` with a reason
 (the key ID is never logged). Sample events: `tests/fixtures/`.
 

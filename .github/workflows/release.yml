@@ -1,0 +1,48 @@
+# On a v* tag: test, zip the Lambda package (src/tripwire, the same code Terraform
+# deploys) and attach it with a SHA-256 file to the GitHub release.
+# Terraform users don't need the zip (the module builds its own); it is for anyone
+# deploying another way. The CloudFormation template is attached from v0.2.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Test before releasing
+        run: |
+          ruff check
+          python -m pytest
+      - name: Build the Lambda package
+        run: |
+          zipname="cloudtripwire-lambda-${GITHUB_REF_NAME}.zip"
+          # tripwire/ at the zip root, so handlers are tripwire.<lambda>.handler.handler
+          (cd src && zip -r -X "../${zipname}" tripwire -x '*/__pycache__/*' '*.pyc')
+          unzip -l "$zipname"
+          sha256sum "$zipname" > SHA256SUMS
+          echo "ZIPNAME=${zipname}" >> "$GITHUB_ENV"
+      - name: Attach to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$ZIPNAME" SHA256SUMS --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$ZIPNAME" SHA256SUMS \
+              --title "CloudTripwire $GITHUB_REF_NAME" --generate-notes --verify-tag
+          fi

@@ -1,13 +1,77 @@
-# architecture
+# Architecture
 
-Everything runs in one AWS account, in the region you deploy to (the home region),
-plus two forwarding rules in us-east-1. Detail on the Lambdas: CLAUDE.md section 4.
+Everything runs in your own AWS account, in the region you deploy to (the **home
+region**), plus two forwarding rules in us-east-1. Nothing leaves the account except
+the alerts you configure (Telegram, email). No SaaS, no telemetry.
+
+```
+                         home region                                   every enabled region
+ EventBridge daily ──► cloudtripwire-sweep ──── read only ──────────► EC2, ELBv2, CloudWatch
+ EventBridge hourly ─► cloudtripwire-ttl ────── stop (enforce) ─────► EC2, RDS
+ Health / GuardDuty ─► cloudtripwire-killswitch ─ deactivate key ───► IAM
+                                     │          └ stop new instances ► EC2
+                                     ▼
+              DynamoDB cloudtripwire-state (findings, action log, alert markers)
+              SSM /cloudtripwire/telegram_* ──► Telegram     SNS cloudtripwire-alerts ──► email
+```
 
 | Lambda | Trigger | Reads | Writes |
 |---|---|---|---|
-| `cloudtripwire-sweep` | daily schedule | EC2, ELBv2, CloudWatch in every enabled region | state table (findings), alerts |
-| `cloudtripwire-ttl` | hourly schedule | EC2, RDS in every enabled region | stops expired EC2/RDS (enforce), action log, alerts |
+| `cloudtripwire-sweep` | daily schedule (`sweep_schedule`) | EC2, ELBv2, CloudWatch in every enabled region | state table (findings), alerts. Never changes your resources. |
+| `cloudtripwire-ttl` | hourly schedule (`ttl_schedule`) | EC2, RDS in every enabled region | stops expired EC2/RDS (enforce), action log, alerts |
 | `cloudtripwire-killswitch` | Health / GuardDuty events | EC2 in every enabled region, IAM | deactivates the key, stops new instances (enforce), action log, alerts |
+
+Rules per Lambda: [detectors.md](detectors.md), [ttl.md](ttl.md),
+[killswitch.md](killswitch.md). Every IAM permission: [permissions.md](permissions.md).
+
+## What Terraform creates
+
+- Three Lambdas (Python 3.12, 256 MB, 5-minute timeout) from one zip of `src/`, each
+  with its own IAM role and a log group (30-day retention).
+- EventBridge: two schedules (sweep, TTL), two kill switch rules in the home region,
+  and, if the home region isn't us-east-1, two forwarding rules there plus the role
+  they use.
+- DynamoDB table `cloudtripwire-state` (on-demand, TTL attribute `expires_at`).
+- SNS topic `cloudtripwire-alerts` (plus your email subscription, if set).
+- SSM SecureString parameters `/cloudtripwire/telegram_bot_token` and
+  `/cloudtripwire/telegram_chat_id` (placeholders; you set the values).
+- CloudWatch alarms on each Lambda's `Errors` metric, sent to the SNS topic.
+
+## Code layout
+
+Each handler is thin: parse the event, call pure functions, write state, notify.
+
+| Path | What |
+|---|---|
+| `src/tripwire/common/` | config (env vars), regions, pricing, tags/ttl parsing, DynamoDB state, notify |
+| `src/tripwire/sweep/` | handler + one module per detector |
+| `src/tripwire/ttl/handler.py` | TTL rules and stops |
+| `src/tripwire/killswitch/` | `events.py` (event parser), `handler.py` (actions, alert) |
+
+Only the Python standard library and boto3 (in the Lambda runtime) are used: no
+layers, no `requests`. Clients are cached per region for the warm container.
+
+## Failure handling
+
+- **Per region / per check:** a failing region, service or resource is logged and
+  skipped; the rest of the run continues and the alert says "Warning: N checks failed".
+- **Per kill switch step:** deactivate, stop and log are independent; a failure is an
+  alert line, not a crash.
+- **Per channel:** a failing alert channel is logged and doesn't block the others.
+- **Crashes** (bad config, DynamoDB unreachable) make the Lambda error, which trips its
+  CloudWatch alarm. The alarm sends **email only** (SNS), so set `alert_email` even if
+  you use Telegram. Terraform warns if it's empty.
+
+## Alerts
+
+- Telegram via the Bot API (`urllib.request`, 15 s timeout), email via SNS.
+- One message per run, kept under 4,000 characters (Telegram's limit is 4,096); long
+  lists end with "+N more", the footer is never cut.
+- Never in a message or log: full access key IDs (last 4 only), tokens, secrets. The
+  account ID may appear.
+- The sweep sends a digest when it finds something or a check failed, and an all-clear
+  on Mondays (UTC); otherwise nothing. TTL alerts are sent once per resource and expiry.
+  The kill switch always alerts.
 
 ## Kill switch event routing
 

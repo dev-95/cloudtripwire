@@ -8,7 +8,15 @@ Costs are estimates from the us-east-1 list prices in
 [`src/tripwire/common/pricing.py`](../src/tripwire/common/pricing.py) (verified
 2026-10-19). Prices in other regions can differ.
 
-Fix commands are suggestions for **you** to run. CloudTripwire never runs them.
+Fix commands are suggestions for **you** to run. CloudTripwire never runs them. They
+are written to the sweep Lambda's CloudWatch logs (one `finding` event per resource,
+with `fix_command`); the digest itself stays short.
+
+**Age in the digest** ("flagged for N days") is counted from when CloudTripwire
+first flagged the resource (`first_seen` in the state table), the same for every
+detector. If a resource stops being flagged (e.g. a volume gets attached) and is
+flagged again later, the count starts over. Each section below also notes the AWS
+timestamp the detector reads; that is only used internally.
 
 ## `ebs_unattached`
 
@@ -27,8 +35,7 @@ types are priced as gp2 and logged.
 | sc1 | 0.015 |
 | standard | 0.05 |
 
-**Age:** days since the volume's `CreateTime` (the sweep handler will replace this
-with days since CloudTripwire first saw it).
+**Timestamp read:** `CreateTime`.
 
 **Suggested fix:** snapshot, then delete.
 
@@ -48,7 +55,7 @@ network interface).
 
 **Cost:** `$0.005/hour × 730 hours = $3.65/month` (public IPv4 price, idle or in use).
 
-**Age:** not reported; Elastic IPs have no creation time in the API.
+**Timestamp read:** none; Elastic IPs have no creation time in the API.
 
 **Suggested fix:**
 
@@ -75,7 +82,7 @@ real workload sends far more.
 **Cost:** `$0.045/hour × 730 hours = $32.85/month`. Data processing
 ($0.045/GB) is extra but near zero for an idle NAT.
 
-**Age:** days since the NAT gateway's `CreateTime`.
+**Timestamp read:** `CreateTime` (also used to skip young NAT gateways, above).
 
 **Suggested fix:**
 
@@ -98,7 +105,7 @@ batches of 20 ARNs (the API limit).
 **Cost:** `hourly LB price × 730`: ALB and NLB $0.0225/hour = $16.43/month.
 LCU/NLCU charges are extra but near zero with no traffic.
 
-**Age:** days since the load balancer's `CreatedTime`.
+**Timestamp read:** `CreatedTime`.
 
 **Suggested fix:**
 
@@ -129,7 +136,7 @@ threshold is not flagged. Skipped:
 **estimate**: snapshots are incremental, so the billed size is often much smaller
 than the source volume size.
 
-**Age:** days since the snapshot's `StartTime`.
+**Timestamp read:** `StartTime` (the age rule above).
 
 **Suggested fix:**
 
@@ -153,7 +160,7 @@ a missed one for this detector.
 **Cost:** sum of the [`ebs_unattached`](#ebs_unattached) per-GB-month prices for
 every EBS volume attached to the instance (one `DescribeVolumes` call per instance).
 
-**Age:** days since the instance was stopped.
+**Timestamp read:** the stop time from `StateTransitionReason` (the rule above).
 
 **Suggested fix:** make an AMI as a backup, wait for it, then terminate.
 

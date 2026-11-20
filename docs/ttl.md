@@ -27,7 +27,7 @@ is done.
 |---|---|---|
 | Less than 1 hour left | One "expires in N min" alert | Same |
 | Expired | One "would stop X (ttl 4h, expired 20 min ago)" alert | Stop it, tag `tripwire:stopped-at=<UTC time>`, log the action in DynamoDB, alert with the undo command |
-| Expired, but it can't safely be stopped (below) | One "won't stop" alert with the reason | Same: never stopped |
+| Expired, but it can't safely be stopped (below) | One "won't stop" alert with the reason (no one-hour warning first) | Same: never stopped |
 | Tagged `tripwire=ignore` | Nothing, ever | Nothing, ever |
 
 All alerts from one run go out as one message. Each alert is sent once per
@@ -82,4 +82,6 @@ CloudTripwire never deletes.
 
 ## Permissions
 
-See [permissions.md](permissions.md#ttl-lambda-cloudtripwire-ttl).
+See [permissions.md](permissions.md#ttl-lambda-cloudtripwire-ttl). IAM itself also
+refuses to stop or tag a resource tagged `tripwire=ignore`, so the opt-out holds even
+if the code had a bug.

@@ -43,7 +43,7 @@ variable "sweep_schedule" {
 }
 
 variable "ttl_schedule" {
-  description = "EventBridge schedule for TTL enforcement (used from M2)."
+  description = "EventBridge schedule for TTL enforcement."
   type        = string
   default     = "rate(1 hour)"
 
@@ -104,7 +104,7 @@ variable "nat_idle_days" {
 }
 
 variable "killswitch_lookback_minutes" {
-  description = "Instances launched within this many minutes before a leak alert get stopped (used from M2)."
+  description = "Instances launched within this many minutes before a leak alert get stopped."
   type        = number
   default     = 60
 
