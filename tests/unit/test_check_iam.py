@@ -20,6 +20,22 @@ def test_real_iam_tf_passes(capsys):
     assert "IAM guard: OK" in capsys.readouterr().out
 
 
+def test_ci_file_holds_every_lambda_policy():
+    """CI checks terraform/iam.tf only, so every role's actions must live there."""
+    actions = set(check_iam.extract_actions((ROOT / "terraform" / "iam.tf").read_text()))
+    for action in (
+        "ec2:DescribeVolumes",  # sweep
+        "rds:StopDBInstance",  # ttl
+        "iam:UpdateAccessKey",  # killswitch
+        "iam:GetAccessKeyLastUsed",
+        "events:PutEvents",  # killswitch forwarder
+    ):
+        assert action in actions
+    others = [p.name for p in (ROOT / "terraform").glob("*.tf") if p.name != "iam.tf"]
+    for name in others:  # no IAM policy documents hiding in another file
+        assert "aws_iam_policy_document" not in (ROOT / "terraform" / name).read_text(), name
+
+
 def test_extracts_multiline_hcl_lists_and_skips_comments():
     text = """
     statement {
