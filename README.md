@@ -4,8 +4,15 @@
 
 Install in 2 minutes, stop surprise AWS bills: zombie cleanup, self-destruct timers, and a leaked-key kill switch, running entirely in your own account.
 
-<!-- DEMO GIF: docs/demo.gif (terraform apply -> Telegram digest -> kill switch alert). Add before launch. -->
-> Demo GIF coming soon.
+## What it looks like
+
+<img src="docs/images/sweep-and-ttl.png" alt="Telegram alerts: a zombie digest listing an unattached Elastic IP and EBS volume, a TTL warning, and a TTL stop with the undo command" width="420">
+
+*Real alerts from the first test deploy: zombie digest, TTL warning, TTL stop*
+
+<img src="docs/images/killswitch-alert.png" alt="Telegram kill switch alert: a leaked key deactivated and a recently launched instance stopped, with undo commands and next steps" width="420">
+
+*Kill switch on a canary key, Nov 19, 2026*
 
 v0.1.0 installs with Terraform. A CloudFormation one-click install and Slack alerts come in v0.2.
 
