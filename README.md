@@ -1,121 +1,62 @@
 # CloudTripwire
 
-[![CI](https://github.com/dev-95/cloudtripwire/actions/workflows/ci.yml/badge.svg)](https://github.com/dev-95/cloudtripwire/actions/workflows/ci.yml)
+![CI](https://github.com/dev-95/cloudtripwire/actions/workflows/ci.yml/badge.svg)
 
-Install in 2 minutes, stop surprise AWS bills: zombie cleanup, self-destruct timers, and a leaked-key kill switch, running entirely in your own account.
+Catch the AWS mistakes that turn into surprise bills, from inside your own account.
 
-## What it looks like
+## Why I built this
 
-<img src="docs/images/sweep-and-ttl.png" alt="Telegram alerts: a zombie digest listing an unattached Elastic IP and EBS volume, a TTL warning, and a TTL stop with the undo command" width="420">
+While studying for AWS certs I kept running into the same two stories on r/aws and r/AWSCertifications.
 
-*Real alerts from the first test deploy: zombie digest, TTL warning, TTL stop*
+Someone follows a tutorial, deletes the EC2 instance at the end, and forgets the NAT gateway. It bills $32 a month until the invoice shows up. Or someone pushes an access key to GitHub by accident, and within minutes there are crypto miners running in regions they have never opened.
 
-<img src="docs/images/killswitch-alert.png" alt="Telegram kill switch alert: a leaked key deactivated and a recently launched instance stopped, with undo commands and next steps" width="420">
-
-*Kill switch on a canary key, Nov 19, 2026*
-
-v0.1.0 installs with Terraform. A CloudFormation one-click install and Slack alerts come in v0.2.
-
-## The problem
-
-Most surprise AWS bills come from two mistakes. Resources you thought you cleaned up
-keep billing quietly: an unattached volume, an idle NAT gateway, a forgotten instance.
-Or an access key gets pushed to GitHub, and bots use it within minutes to launch
-crypto-mining instances in every region.
+AWS Budgets tells you about this after the money is already spent. I wanted something that finds the cause, deals with it, and runs in my own account so nobody else ever gets my credentials. It also had to be something I'd trust enough to leave switched on.
 
 ## What it does
 
-CloudTripwire is a Terraform module you install into **your own AWS account**. No SaaS,
-no data leaves the account, and nobody else ever holds your credentials. It has three
-parts:
+One Terraform module, three Lambdas:
 
-| Part | Runs | Does |
-|---|---|---|
-| **Zombie sweep** | daily | Finds forgotten resources in every region, estimates their monthly cost, sends a digest. Report only: it never changes anything. |
-| **TTL timers** | hourly | Tag an EC2 or RDS instance `ttl=4h` (or `2d`, `2026-12-01`...) and it gets stopped when time is up. Warns an hour before. |
-| **Kill switch** | on AWS's leaked-key alert | Deactivates the leaked key, stops instances launched in the last hour, tells you exactly what it did and how to undo it. |
+- The **sweep** runs once a day across every enabled region and finds resources that are still billing for nothing: unattached volumes, idle Elastic IPs and NAT gateways, empty load balancers, old snapshots, instances stopped for weeks. It sends a digest with what each one costs per month. It only reports.
+- The **TTL timer** checks every hour for EC2 and RDS instances tagged `ttl=4h` (or `30m`, `2d`, a date). It warns you an hour before, then stops the instance when time is up.
+- The **kill switch** listens for AWS's own "your key was exposed publicly" alert. When it fires, it deactivates the key, stops anything launched in the last hour, and tells you exactly what it did and how to undo it.
 
-### Zombie sweep
+These are real alerts from my test account:
 
-| Detector | Flags | Estimated cost |
-|---|---|---|
-| `ebs_unattached` | EBS volumes not attached to any instance | size × per-GB-month price |
-| `eip_unassociated` | Elastic IPs not attached to anything | ~$3.65/month each |
-| `nat_idle` | NAT gateways that sent under 1 MB in 7 days | ~$32.85/month each |
-| `elb_no_targets` | ALBs/NLBs with no registered targets | ~$16.43/month each |
-| `snapshots_old` | Your snapshots older than 90 days, not used by an AMI or AWS Backup | size × $0.05/GB-month (upper bound) |
-| `ec2_stopped_long` | Instances stopped for more than 7 days | its attached EBS volumes |
+<img src="docs/images/sweep-and-ttl.png" alt="Telegram alerts: zombie digest, TTL warning, TTL stop" width="400">
 
-Details, cost formulas and suggested fixes: [docs/detectors.md](docs/detectors.md).
-Prices are us-east-1 list-price estimates.
+<img src="docs/images/killswitch-alert.png" alt="Telegram kill switch alert with undo commands" width="400">
 
-A digest looks like this (sample values):
+## How it works
 
-```
-🧟 CloudTripwire: 3 zombies found, about $38/month
-• NAT gateway nat-0abc1234def567890 (us-east-1): $32.85/mo, NAT gateway sent under 1 MB in the last 7 days (hourly charge only; data processing is extra), flagged for 12 days
-• Elastic IP eipalloc-0abc1234def567890 (ca-central-1): $3.65/mo, Elastic IP 203.0.113.25 is not attached to anything, flagged for 30 days
-• EBS volume vol-0a1b2c3d4e5f67890 (us-east-1): $1.60/mo, 20 GB gp3 volume, not attached to any instance, flagged for 9 days
-Fix commands: in the sweep Lambda's CloudWatch logs.
-Mode: report only (the sweep never changes anything)
+```mermaid
+flowchart LR
+    subgraph useast1["us-east-1"]
+        health["AWS Health<br/>leaked-key event"] --> fwd["forwarding rule"]
+    end
+    subgraph home["your home region"]
+        daily["daily schedule"] --> sweep["sweep Lambda"]
+        hourly["hourly schedule"] --> ttl["ttl Lambda"]
+        fwd --> bus["default event bus"] --> ks["kill switch Lambda"]
+        sweep --> db[("DynamoDB<br/>state + action log")]
+        ttl --> db
+        ks --> db
+        sweep & ttl & ks --> alerts["Telegram / email"]
+    end
 ```
 
-### TTL timers
+AWS only sends leaked-key events to us-east-1, wherever you deploy. So the module puts two small forwarding rules there and keeps everything else in the region you choose. More detail in [docs/architecture.md](docs/architecture.md).
 
-Tag key `ttl`, value `30m`, `4h`, `2d`, `1w` (from launch) or `2026-12-01` /
-`2026-12-01T18:00Z` (UTC). In `observe` mode (the default) you get "would stop"
-alerts; in `enforce` mode it stops the instance and sends the restart command.
-Instances in Auto Scaling groups, Spot Instances and RDS setups that can't be stopped
-are alert only. Optional **lab mode** treats untagged instances as expiring after 24 h,
-for dedicated learning accounts. Full rules: [docs/ttl.md](docs/ttl.md).
+## Try it
 
-### Kill switch
-
-AWS watches public code sites for leaked access keys and raises an AWS Health event
-when it finds one of yours. The kill switch acts as soon as that event arrives
-(about 20 s for a full run in testing). Sample alert, fake values:
-
-```
-🚨 CloudTripwire kill switch: leaked key ****TEST
-Trigger: AWS Health: key exposed publicly (AWS_RISK_CREDENTIALS_EXPOSED)
-Account: 123456789012
-• Deactivated key ****TEST (user ci-deploy). Undo (full key ID in the action log): aws iam update-access-key --user-name ci-deploy --access-key-id ****TEST --status Active
-• Stopped instance i-0abc1234def567890 in us-east-1. Undo: aws ec2 start-instances --instance-ids i-0abc1234def567890 --region us-east-1
-• Stopped instance i-0fed9876cba543210 in eu-west-1. Undo: aws ec2 start-instances --instance-ids i-0fed9876cba543210 --region eu-west-1
-Next steps:
-1. Rotate the key: create a new one, update whatever used it, then delete the old one.
-2. Check CloudTrail Event history, in every region, for what the key did.
-3. Look for IAM users, roles, access keys and instances you didn't create.
-4. Open an AWS Support case (Account and billing) about charges from the leak.
-Mode: enforce
-```
-
-With GuardDuty enabled, it also reacts to crypto-mining and credential-exfiltration
-findings. Details: [docs/killswitch.md](docs/killswitch.md).
-
-## Install (Terraform, about 2 minutes)
-
-You need Terraform 1.5+, the AWS CLI signed in to the account you want to protect, and
-a Telegram bot (or just email).
-
-**1. Add the module.** Create `main.tf` in an empty folder:
+You need Terraform 1.5+, the AWS CLI signed in to the account you want to protect, and a Telegram bot or an email address.
 
 ```hcl
-terraform {
-  required_version = ">= 1.5"
-  required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 6.0" }
-  }
+provider "aws" {
+  region = "ca-central-1" # your home region
 }
 
 provider "aws" {
-  region = "ca-central-1" # your home region; it still scans every enabled region
-}
-
-# AWS sends leaked-key events to us-east-1 only; the kill switch listens there.
-# Required even if your home region is us-east-1.
-provider "aws" {
-  alias  = "us_east_1"
+  alias  = "us_east_1" # where AWS sends leaked-key events
   region = "us-east-1"
 }
 
@@ -127,7 +68,7 @@ module "cloudtripwire" {
   }
 
   channels    = ["telegram", "email"]
-  alert_email = "you@example.com" # also receives crash alarms; recommended
+  alert_email = "you@example.com"
 }
 
 output "ssm_setup_commands" {
@@ -135,191 +76,55 @@ output "ssm_setup_commands" {
 }
 ```
 
-**2. Deploy.**
+Run `terraform init` and `terraform apply`, confirm the subscription email, then run the commands from the `ssm_setup_commands` output to store your Telegram token and chat ID in SSM. Full setup, every variable and how to uninstall: [docs/configuration.md](docs/configuration.md).
 
-```
-terraform init
-terraform apply
-```
+## Decisions I made on purpose
 
-Confirm the subscription email AWS sends to `alert_email`.
+**It stops things. It never deletes them.** A "zombie" volume might be the only copy of someone's data. CloudTripwire stops instances and deactivates keys, and every action comes with a one-line undo command. Deleting is your call; the sweep only suggests the command. ([ADR 0001](docs/decisions/0001-stop-not-delete.md))
 
-**3. Store your Telegram secrets** (skip if you only use email). Create a bot with
-[@BotFather](https://t.me/BotFather) to get its token, send your bot any message,
-then open `https://api.telegram.org/bot<token>/getUpdates` and copy `"chat":{"id":...}`.
-Run the two PowerShell lines in the `ssm_setup_commands` output, one at a time; each
-asks for one value. The values go straight into SSM Parameter Store (SecureString),
-never into Terraform state or your shell history. In bash, the equivalent of each
-line is:
+**TTL starts in observe mode, the kill switch doesn't.** TTL only reports "would stop" until you switch it to `enforce`. The kill switch acts by default, because a leaked key gets abused faster than anyone can read an alert, and everything it does can be reversed. You can set it to observe if you'd rather decide yourself. ([ADR 0002](docs/decisions/0002-killswitch-enforce-default.md))
 
-```bash
-read -rs t; aws ssm put-parameter --type SecureString --overwrite --region <home-region> --name /cloudtripwire/telegram_bot_token --value="$t"; unset t
-```
+**You can opt anything out.** Tag a resource `tripwire=ignore` and it's never flagged or touched. The IAM policies enforce that too, so a bug in my code still can't stop it.
 
-**4. Try it.** Run the sweep now instead of waiting for tomorrow:
+**Every permission is written down.** Each Lambda has its own role, there are no wildcard actions, and CI fails if a `Delete`, `Terminate` or `Release` action ever appears. Each permission and the reason for it is in [docs/permissions.md](docs/permissions.md).
 
-```
-aws lambda invoke --function-name cloudtripwire-sweep --cli-read-timeout 310 out.json
-```
+## What broke along the way
 
-If nothing is found you get no message (an all-clear only goes out on Mondays).
-`examples/basic` in this repo is a minimal working setup.
+The first deploy failed to send a single Telegram message, four different ways. Two of them came from the same thing: pasting the bot token and chat ID into PowerShell kept the quotes around them, and SSM stored them as part of the value. The setup commands now strip them, and failed sends log Telegram's actual error so the next problem is obvious.
 
-## Configuration
+My first IAM policy included `kms:Decrypt` for the SSM secrets. I took it out and tested again on real AWS. It still worked, because the AWS-managed SSM key already allows decryption through SSM. That's one less permission to explain.
 
-All are Terraform variables on the module.
+I planned to test the kill switch's cross-region routing with GuardDuty sample findings. My test account is on the AWS Free plan, which doesn't allow GuardDuty. So I proved the path with a temporary custom event sent from us-east-1, watched it arrive in ca-central-1 with its source intact, and deleted the test rules afterwards. Planning the GuardDuty test also made me add a guard so GuardDuty sample findings can never trigger the kill switch, since they'd otherwise stop any recently launched instance.
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `mode` | `"observe"` | `observe` or `enforce` for TTL actions. The sweep only ever reports. |
-| `killswitch_mode` | `"enforce"` | `observe` or `enforce` for the kill switch (see [Safety](#safety)) |
-| `regions` | `[]` (all enabled) | Limit scanning to these regions |
-| `sweep_schedule` | `"cron(0 13 * * ? *)"` | When the daily sweep runs (UTC) |
-| `ttl_schedule` | `"rate(1 hour)"` | How often TTL tags are checked |
-| `lab_mode` | `false` | Treat running EC2/RDS with no `ttl` tag as expired after `lab_grace_hours` |
-| `lab_grace_hours` | `24` | Grace period for lab mode |
-| `snapshot_max_age_days` | `90` | Snapshots older than this are flagged |
-| `stopped_instance_days` | `7` | Instances stopped longer than this are flagged |
-| `nat_idle_days` | `7` | NAT gateway traffic lookback |
-| `killswitch_lookback_minutes` | `60` | Instances launched this recently get stopped by the kill switch |
-| `channels` | `["telegram"]` | Any of `telegram`, `email` |
-| `alert_email` | `""` | Email for alerts and crash alarms (you must confirm the subscription) |
-| `cli_profile` | `""` | Adds `--profile` to the `ssm_setup_commands` output |
-| `tags` | `{}` | Tags for every CloudTripwire resource |
+During the live kill switch test, the Telegram send took about 10 seconds, right at the 10-second timeout. I raised it to 15.
 
-Outputs: `ssm_setup_commands`, `sweep_function_name`, `ttl_function_name`,
-`killswitch_function_name`, `state_table_name`, `alerts_topic_arn`.
+## How it's tested
 
-## Stop leaks before they happen
+252 unit tests with [moto](https://github.com/getmoto/moto) run on every push, along with ruff, `terraform validate`, gitleaks and the IAM guard. I also ran each feature against a real test account: seeded zombies showing up in the digest, a `ttl=30m` instance getting stopped on schedule, the kill switch deactivating a canary user's key and stopping an instance across 17 regions in 19 seconds, and the cross-region forwarding test above.
 
-The kill switch is the last line of defence. Better to never push a key at all.
-[`guardrails/`](guardrails/) has two copy-paste files for **your** repos, both
-running [gitleaks](https://github.com/gitleaks/gitleaks):
-
-1. **On your machine:** paste [`guardrails/pre-commit-snippet.yaml`](guardrails/pre-commit-snippet.yaml)
-   into your `.pre-commit-config.yaml`, then `pip install pre-commit` and `pre-commit install`.
-   Commits containing a secret are refused.
-2. **On GitHub:** copy [`guardrails/secret-scan.yml`](guardrails/secret-scan.yml) to
-   `.github/workflows/secret-scan.yml`. Every push and pull request is scanned, with a
-   pinned, checksum-verified gitleaks.
-3. **Already pushed a key?** Deactivate it in IAM now, then rotate it. Removing the
-   commit isn't enough: bots have already copied it.
-
-## Safety
-
-- **Stop, never delete.** CloudTripwire never deletes, terminates or releases anything.
-  It stops instances, sets keys Inactive and adds its own tags; every action can be
-  undone with one command, which is in the alert and the action log. Deleting is your
-  call: the sweep shows the command for you to run.
-  ([ADR 0001](docs/decisions/0001-stop-not-delete.md))
-- **Observe by default.** TTL only reports "would stop" until you set `mode = "enforce"`.
-- **The kill switch is the one exception: it defaults to `enforce`.** Leaked keys are
-  exploited within minutes, faster than anyone can read an alert, and everything it
-  does is reversible. Set `killswitch_mode = "observe"` if you'd rather decide yourself.
-  ([ADR 0002](docs/decisions/0002-killswitch-enforce-default.md))
-- **Opt out per resource.** Tag anything `tripwire=ignore` and it is never flagged or
-  touched. The IAM policies enforce this too, so it holds even if the code had a bug.
-- **Least privilege, all documented.** One IAM role per Lambda, no wildcard actions, no
-  `Delete*` / `Terminate*` / `Release*` (CI fails if one appears). Every permission and
-  why: [docs/permissions.md](docs/permissions.md).
-- **No secrets in code or logs.** Tokens live in SSM SecureString parameters; alerts and
-  logs show only the last 4 characters of a key ID.
-- **No dependencies.** Python standard library + boto3 from the Lambda runtime. Nothing
-  to audit beyond this repo.
+Not tested live yet: a real AWS Health leaked-key event (nobody can send those by hand), GuardDuty findings, and stopping RDS.
 
 ## Cost
 
-Near zero at normal scale: everything fits the AWS free tier.
+It fits inside the AWS free tier at normal scale. The only paid piece is GuardDuty, which is optional; without it, the kill switch still reacts to AWS Health's leaked-key alerts, and those work on every account. Breakdown in [docs/configuration.md](docs/configuration.md#cost).
 
-- Lambda: about 10 minutes of runtime a day in total (sweep daily, TTL hourly, ~25 s
-  each across 17 regions), roughly 5,000 GB-seconds a month against 400,000 free.
-- EventBridge schedules and AWS service events: free. DynamoDB on-demand: a handful
-  of small writes a day (cents a year at most). SSM standard parameters: free.
-  CloudWatch: 3 alarms (10 are free), logs kept 30 days. SNS email: 1,000 free a month.
-- **GuardDuty is the only part with a real cost.** It's optional: without it the kill
-  switch still reacts to AWS Health leaked-key events. If you enable it, GuardDuty
-  bills per event analysed after a 30-day trial.
+## Stop leaks before they happen
 
-What CloudTripwire *stops* still bills in part: a stopped instance keeps paying for its
-EBS volumes, until you delete them.
+The kill switch is the last line of defence. [`guardrails/`](guardrails/) has a gitleaks pre-commit hook and a GitHub Actions workflow you can copy into your own repos so a key never gets pushed in the first place.
 
-## How it was tested
+## How I built it
 
-- **252 unit tests** with [moto](https://github.com/getmoto/moto) (no real AWS, no
-  network), covering every detector, the TTL rules, the kill switch (including
-  "observe makes zero write calls" and "one failing step doesn't stop the others") and
-  alert formatting. CI runs them plus ruff, `terraform validate` on Terraform 1.5 and the
-  latest 1.x, gitleaks on the full history, and the IAM guard.
-- **On real AWS**, in a dedicated test account:
-  - **Zombie digest** (2026-10-23): a seeded unattached 1 GB gp3 volume and an unused
-    Elastic IP showed up in the Telegram and email digest.
-  - **TTL stop** (2026-10-24): a t3.micro tagged `ttl=30m` got the one-hour warning,
-    then the scheduled run stopped it, tagged it and logged the undo command.
-  - **Kill switch** (2026-11-20): a canary IAM user's key plus a t3.micro launched a
-    minute earlier. A simulated AWS Health event deactivated the key and stopped and
-    tagged the instance (17 regions checked in 19 s), with both alerts sent.
-  - **Cross-region forwarding** (2026-11-20): a custom test event put on the us-east-1
-    bus reached the kill switch in ca-central-1 within 15 s, source intact.
-- **Not yet tested live:** a real AWS Health leaked-key event (AWS doesn't let anyone
-  send those by hand), GuardDuty findings, and stopping RDS (tested in moto only).
+I wrote this with Claude Code as a pair programmer. The design decisions, the approval for every change to AWS, and all the live testing were mine. [CLAUDE.md](CLAUDE.md) is the spec and working log we built from, if you want to see how it came together.
 
-## FAQ
+## What's next
 
-**Does the kill switch work on the AWS Free plan?**
-Yes, for leaked keys: AWS Health reports exposed access keys on every account, and the
-kill switch reacts to that. The second trigger, GuardDuty findings (crypto mining,
-credential exfiltration), needs GuardDuty enabled. GuardDuty isn't available on the
-Free account plan and costs money after its 30-day trial on a paid plan.
+- v0.2: one-click CloudFormation install, Slack alerts, crash alarms on Telegram (today they only go to email)
+- Later: the same safety net for Azure
 
-**Will GuardDuty sample findings trigger the kill switch?**
-No. Sample findings (from "Generate sample findings" or `aws guardduty create-sample-findings`)
-only send a "sample finding received, no action taken" alert. They never deactivate a key
-or stop an instance, in any mode. See [docs/killswitch.md](docs/killswitch.md).
+If you install it, a star or a note in Discussions tells me someone's using it. There is no telemetry.
 
-**Why does it need a us-east-1 provider?**
-AWS Health sends account-wide events, including leaked keys, to us-east-1 only. The
-module puts a small forwarding rule there that passes them to your home region.
+## Docs
 
-**Can it see my data?**
-It reads resource metadata (sizes, tags, states, traffic totals), never the contents of
-volumes, snapshots or databases. And it all runs in your account; nothing is sent
-anywhere except your own alerts.
+[Configuration](docs/configuration.md) · [Architecture](docs/architecture.md) · [Permissions](docs/permissions.md) · [Detectors](docs/detectors.md) · [TTL rules](docs/ttl.md) · [Kill switch](docs/killswitch.md)
 
-**I installed it. How do I tell you?**
-Star the repo or say hi in GitHub Discussions. There is no telemetry, ever.
-
-## Uninstall
-
-```
-terraform destroy
-```
-
-This removes everything CloudTripwire created: Lambdas, roles, rules, alarms, the SNS
-topic, the SSM parameters and the state table (with the action log; to keep it, first run
-`aws dynamodb scan --table-name cloudtripwire-state > cloudtripwire-actions.json`).
-It doesn't touch your resources: anything it stopped stays stopped, and any key it
-deactivated stays Inactive, until you restart or re-enable them.
-
-## Lessons learned
-
-Things that only showed up on real AWS:
-
-- **Pasted secrets keep their quotes.** Telegram failed four different ways on the first
-  deploy (404, 400, 401, "chat not found"). Two were a token and chat ID stored with
-  surrounding quotes from a PowerShell paste. The setup commands now trim them, and the
-  Telegram error description is logged (token scrubbed) so the next problem is obvious.
-- **A permission that looked necessary wasn't.** `kms:Decrypt` for SSM SecureStrings was
-  in the first policy. With it removed, the live test still decrypted fine: the AWS-managed
-  `aws/ssm` key already allows it through SSM. One fewer permission.
-- **Leaked-key events only arrive in us-east-1.** AWS Health sends global events there
-  regardless of where you deploy, so the module forwards them across regions with an
-  EventBridge rule instead of asking everyone to deploy in us-east-1.
-- **The AWS Free plan blocks GuardDuty.** The planned forwarding test used GuardDuty sample
-  findings and failed with `SubscriptionRequiredException`. Forwarding was proven instead
-  with a temporary custom-source event, which needs nothing enabled.
-- **Live calls are slower than tests.** A Telegram send during the kill switch demo took
-  about 10 s, right at the 10 s timeout, so it was raised to 15 s.
-
-## License
-
-MIT
+MIT licensed.
