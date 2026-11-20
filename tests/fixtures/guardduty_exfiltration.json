@@ -1,0 +1,51 @@
+{
+  "version": "0",
+  "id": "de3e5f6a-1b2c-4d5e-8f90-123456789012",
+  "detail-type": "GuardDuty Finding",
+  "source": "aws.guardduty",
+  "account": "123456789012",
+  "time": "2026-11-19T08:00:00Z",
+  "region": "us-east-1",
+  "resources": [],
+  "detail": {
+    "schemaVersion": "2.0",
+    "accountId": "123456789012",
+    "region": "us-east-1",
+    "partition": "aws",
+    "id": "a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4",
+    "arn": "arn:aws:guardduty:us-east-1:123456789012:detector/example/finding/a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4",
+    "type": "UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration.OutsideAWS",
+    "resource": {
+      "resourceType": "AccessKey",
+      "accessKeyDetails": {
+        "accessKeyId": "ASIAEXAMPLE0000TEST",
+        "principalId": "AROAEXAMPLE0000TEST:i-0123456789abcdef0",
+        "userName": "example-instance-role",
+        "userType": "AssumedRole"
+      }
+    },
+    "service": {
+      "serviceName": "guardduty",
+      "action": {
+        "actionType": "AWS_API_CALL",
+        "awsApiCallAction": {
+          "api": "ListBuckets",
+          "serviceName": "s3.amazonaws.com",
+          "callerType": "Remote IP",
+          "remoteIpDetails": {
+            "ipAddressV4": "198.51.100.7"
+          }
+        }
+      },
+      "archived": false,
+      "count": 1,
+      "eventFirstSeen": "2026-11-19T07:55:00.000Z",
+      "eventLastSeen": "2026-11-19T07:55:00.000Z"
+    },
+    "severity": 8,
+    "createdAt": "2026-11-19T07:58:00.000Z",
+    "updatedAt": "2026-11-19T07:58:00.000Z",
+    "title": "Credentials for instance role example-instance-role used from external IP address.",
+    "description": "Credentials created exclusively for an EC2 instance using instance role example-instance-role have been used from external IP address 198.51.100.7."
+  }
+}

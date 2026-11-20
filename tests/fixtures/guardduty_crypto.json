@@ -1,0 +1,55 @@
+{
+  "version": "0",
+  "id": "cd2d702e-ab31-411b-9344-793ce56b1bc7",
+  "detail-type": "GuardDuty Finding",
+  "source": "aws.guardduty",
+  "account": "123456789012",
+  "time": "2026-11-19T07:00:00Z",
+  "region": "us-east-1",
+  "resources": [],
+  "detail": {
+    "schemaVersion": "2.0",
+    "accountId": "123456789012",
+    "region": "us-east-1",
+    "partition": "aws",
+    "id": "16afba5c5c43e07c9e3e5e2e544e95df",
+    "arn": "arn:aws:guardduty:us-east-1:123456789012:detector/example/finding/16afba5c5c43e07c9e3e5e2e544e95df",
+    "type": "CryptoCurrency:EC2/BitcoinTool.B!DNS",
+    "resource": {
+      "resourceType": "Instance",
+      "instanceDetails": {
+        "instanceId": "i-0123456789abcdef0",
+        "instanceType": "c5.4xlarge",
+        "launchTime": "2026-11-19T06:40:12.000Z",
+        "availabilityZone": "us-east-1a",
+        "imageId": "ami-0123456789abcdef0",
+        "instanceState": "running",
+        "iamInstanceProfile": {
+          "arn": "arn:aws:iam::123456789012:instance-profile/example-profile",
+          "id": "AIPAEXAMPLE0000TEST"
+        },
+        "tags": []
+      }
+    },
+    "service": {
+      "serviceName": "guardduty",
+      "action": {
+        "actionType": "DNS_REQUEST",
+        "dnsRequestAction": {
+          "domain": "pool.example.com",
+          "protocol": "UDP",
+          "blocked": false
+        }
+      },
+      "archived": false,
+      "count": 3,
+      "eventFirstSeen": "2026-11-19T06:45:00.000Z",
+      "eventLastSeen": "2026-11-19T06:58:00.000Z"
+    },
+    "severity": 8,
+    "createdAt": "2026-11-19T06:59:00.000Z",
+    "updatedAt": "2026-11-19T06:59:00.000Z",
+    "title": "The EC2 instance i-0123456789abcdef0 is querying a domain name that is associated with Bitcoin-related activity.",
+    "description": "The EC2 instance i-0123456789abcdef0 is querying a domain name that is associated with Bitcoin-related activity."
+  }
+}
